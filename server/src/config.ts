@@ -106,14 +106,17 @@ export function loadConfig(communication: Communication): Config | undefined {
       }
       return config;
     })
-    .with({ type: "UnknownError" }, () => {
+    .with({ type: "UnknownError" }, (): undefined => {
       communication.logError("Unknown error happened. :tehe:");
       return void 0;
     })
-    .with({ type: "WrongConfigError", message: P.select() }, (err) => {
-      communication.logError(`Config malformed. "${err}"`);
-      return void 0;
-    })
+    .with(
+      { type: "WrongConfigError", message: P.select() },
+      (err): undefined => {
+        communication.logError(`Config malformed. "${err}"`);
+        return void 0;
+      },
+    )
     .exhaustive();
 }
 

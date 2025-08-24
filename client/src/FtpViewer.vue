@@ -97,7 +97,7 @@ function save() {
   emit("save", current.value.path);
 }
 
-let timeout: number;
+let timeout: ReturnType<typeof setTimeout>;
 const ftpProps = defineProps<{ item: SyncMap }>();
 const syncItem = ref(ftpProps.item);
 
@@ -191,9 +191,9 @@ function fetchDirectory(itemPath: string) {
         path: `${current.value.path}/${r.name}`,
         isDir: r.type === 2,
         name: r.name,
-        children: r.type === 2 ? [] : undefined,
+        children: r.type === 2 ? ([] as any[]) : undefined,
       }));
-      resolve();
+      resolve(undefined);
     });
   });
 }

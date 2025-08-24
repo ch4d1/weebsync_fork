@@ -152,7 +152,7 @@
                       >
                         <v-expansion-panel
                           v-for="(syncItem, index) in config.syncMaps"
-                          :key="syncItem"
+                          :key="syncItem.id || index"
                           class="sync__panel"
                         >
                           <v-expansion-panel-title class="sync__item-wrap">

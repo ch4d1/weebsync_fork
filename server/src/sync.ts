@@ -32,7 +32,7 @@ export async function syncFiles(
     await getFTPClient(applicationState.config, applicationState.communication),
   )
     .with({ type: "Ok", data: P.select() }, (res) => res)
-    .with({ type: "ConnectionError", message: P.select() }, (err) => {
+    .with({ type: "ConnectionError", message: P.select() }, (err): null => {
       applicationState.communication.logError(`FTP Connection error: ${err}"`);
       updateSyncStatus(applicationState, false);
       return null;

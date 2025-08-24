@@ -95,7 +95,7 @@
 import { useUiStore } from "./store";
 import { storeToRefs } from "pinia";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
-import { WeebsyncPluginBaseInfo } from "@shared/types";
+import { WeebsyncPluginBaseInfo, PluginInputDefinition } from "@shared/types";
 import { useCommunication } from "./communication";
 
 const { plugins } = storeToRefs(useUiStore());
@@ -107,7 +107,7 @@ function sendConfig(plugin: WeebsyncPluginBaseInfo) {
 
 function enabledWhen(
   config: WeebsyncPluginBaseInfo,
-  enableWhenConfig?: WeebsyncPluginBaseInfo["pluginConfigurationDefinition"]["string"]["enableWhen"],
+  enableWhenConfig?: PluginInputDefinition["enableWhen"],
 ): boolean {
   if (!enableWhenConfig) {
     return true;

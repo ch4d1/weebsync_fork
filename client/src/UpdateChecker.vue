@@ -25,12 +25,13 @@
 import { mdiAlert } from "@mdi/js";
 import { useUiStore } from "./store";
 import { storeToRefs } from "pinia";
-import { computed } from "vue";
+import { computed, toRefs } from "vue";
 
 const { currentVersion, latestVersion } = storeToRefs(useUiStore());
 const loading = computed(
   () => currentVersion.value === "LOADING" || latestVersion.value === "LOADING",
 );
 
-defineProps<{ showLink?: Boolean }>();
+const props = defineProps<{ showLink?: boolean }>();
+const { showLink } = toRefs(props);
 </script>

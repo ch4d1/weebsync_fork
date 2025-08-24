@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => {
       outDir: "../build/client",
       target: "es2015",
     },
-    plugins: [Vue(), UnpluginVueComponents.vite(), VitePluginVuetify()],
+    plugins: [Vue(), UnpluginVueComponents.vite({}), VitePluginVuetify()],
     server: {
       port: 8080,
     },

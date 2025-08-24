@@ -18,6 +18,9 @@
       "@shared/*": ["../shared/*"]
     }
   },
+  "vueCompilerOptions": {
+    "skipTemplateCodegen": false
+  },
   "include": [
     "src/**/*"
   ]
