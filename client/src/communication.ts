@@ -12,7 +12,6 @@ export class Communication {
   public socket: Socket<ServerToClientEvents, ClientToServerEvents>;
 
   constructor() {
-    // eslint-disable-next-line no-undef
     this.socket = io(__HOST__, { transports: ["websocket"] });
   }
 

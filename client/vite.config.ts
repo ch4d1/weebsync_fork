@@ -1,17 +1,15 @@
-import { join } from "path";
 import Vue from "@vitejs/plugin-vue";
-import UnpluginVueComponents from "unplugin-vue-components";
+import Components from "unplugin-vue-components/vite";
 import VitePluginVuetify from "vite-plugin-vuetify";
-import { defineConfig } from "vite";
+import { defineConfig, type ConfigEnv } from "vite";
+import { fileURLToPath, URL } from "node:url";
 
-const resolve = (dir: string) => join(__dirname, dir);
-
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command }: ConfigEnv) => {
   return {
     resolve: {
       alias: {
-        "@": resolve("src"),
-        "@shared": resolve("../shared"),
+        "@": fileURLToPath(new URL("./src", import.meta.url)),
+        "@shared": fileURLToPath(new URL("../shared", import.meta.url)),
       },
     },
     base: "",
@@ -20,11 +18,37 @@ export default defineConfig(({ command }) => {
     },
     build: {
       outDir: "../build/client",
-      target: "es2015",
+      target: "es2022",
+      minify: "esbuild" as const,
+      sourcemap: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ["vue", "pinia", "socket.io-client"],
+            vuetify: ["vuetify"],
+            utils: ["dayjs", "ts-pattern"],
+          },
+        },
+      },
     },
-    plugins: [Vue(), UnpluginVueComponents.vite({}), VitePluginVuetify()],
+    plugins: [
+      Vue(),
+      Components(),
+      VitePluginVuetify({
+        styles: { configFile: "src/styles/settings.scss" },
+      }),
+    ],
     server: {
       port: 8080,
+      host: true,
+      open: false,
+    },
+    preview: {
+      port: 8080,
+      host: true,
+    },
+    optimizeDeps: {
+      include: ["vue", "pinia", "socket.io-client", "vuetify"],
     },
   };
 });

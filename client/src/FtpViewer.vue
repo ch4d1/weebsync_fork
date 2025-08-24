@@ -115,7 +115,7 @@ watch(
 );
 
 const dialog = ref(false);
-const exists = ref(null);
+const exists = ref<boolean | null>(null);
 const loading = ref(false);
 const selectedItem = ref(-1);
 

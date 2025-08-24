@@ -469,10 +469,7 @@ const communication = useCommunication();
 const tab = ref("tab-1");
 
 const syncIntervalRules: Array<(value: number) => string | boolean> = [
-  (v) => {
-    console.log(v);
-    return true;
-  },
+  (_v) => true,
 ];
 
 const downloadSpeedLimitRules: Array<
@@ -505,11 +502,11 @@ function addSyncMap() {
   });
 }
 
-function deleteSyncMap(event: MouseEvent, index: number) {
+function deleteSyncMap(_event: MouseEvent, index: number) {
   config.value.syncMaps.splice(index, 1);
 }
 
-function copySyncMap(event: MouseEvent, index: number) {
+function copySyncMap(_event: MouseEvent, index: number) {
   config.value.syncMaps.splice(index + 1, 0, {
     ...config.value.syncMaps[index],
   });
