@@ -1,6 +1,8 @@
 import * as esbuild from "esbuild";
-// @ts-ignore
-import { version } from "../package.json";
+import { readFileSync } from "fs";
+
+const packageJson = JSON.parse(readFileSync("../package.json", "utf8"));
+const version = packageJson.version;
 
 esbuild
   .build({
@@ -10,6 +12,7 @@ esbuild
     platform: "node",
     format: "esm",
     outfile: "../build/index.mjs",
+    external: ["fsevents"],
     define: {
       "process.env.__APP_VERSION__": JSON.stringify(`v${version}`),
     },
