@@ -8,11 +8,20 @@
         background-color="transparent"
         dark
       >
-        <v-tab class="app-tabs__tab-item" :value="'console'"> Console </v-tab>
-        <v-tab class="app-tabs__tab-item" :value="'config'"> Config </v-tab>
-        <v-tab class="app-tabs__tab-item" :value="'sync'"> Sync </v-tab>
-        <v-tab class="app-tabs__tab-item" :value="'plugins'"> Plugins </v-tab>
+        <v-tab class="app-tabs__tab-item" :value="'console'">
+          <v-icon :icon="mdiConsole" class="tab-icon" /> Console
+        </v-tab>
+        <v-tab class="app-tabs__tab-item" :value="'config'">
+          <v-icon :icon="mdiCog" class="tab-icon" /> Config
+        </v-tab>
+        <v-tab class="app-tabs__tab-item" :value="'sync'">
+          <v-icon :icon="mdiSync" class="tab-icon" /> Sync
+        </v-tab>
+        <v-tab class="app-tabs__tab-item" :value="'plugins'">
+          <v-icon :icon="mdiPuzzle" class="tab-icon" /> Plugins
+        </v-tab>
         <v-tab class="app-tabs__tab-item" :value="'info'">
+          <v-icon :icon="mdiInformation" class="tab-icon" />
           <update-checker /> Info
         </v-tab>
       </v-tabs>
@@ -124,6 +133,7 @@
               small
               elevation="0"
               class="config__save-button"
+              :prepend-icon="mdiContentSave"
               :disabled="isSyncing"
               @click="sendConfig()"
             >
@@ -152,7 +162,7 @@
                       >
                         <v-expansion-panel
                           v-for="(syncItem, index) in config.syncMaps"
-                          :key="syncItem.id || index"
+                          :key="index"
                           class="sync__panel"
                         >
                           <v-expansion-panel-title class="sync__item-wrap">
@@ -273,6 +283,7 @@
               small
               elevation="0"
               class="config__save-button"
+              :prepend-icon="mdiContentSave"
               :disabled="isSyncing"
               @click="sendConfig()"
             >
@@ -282,9 +293,20 @@
               small
               elevation="0"
               class="config__sync-button"
+              :prepend-icon="isSyncing ? mdiPause : mdiSync"
               @click="sync()"
             >
-              {{ isSyncing ? "Stop Sync" : "Sync" }}
+              {{ isSyncing ? (isSyncPaused ? "Resume" : "Pause") : "Sync" }}
+            </v-btn>
+            <v-btn
+              v-if="isSyncing"
+              small
+              elevation="0"
+              class="config__stop-button"
+              color="error"
+              @click="stopSync()"
+            >
+              Stop
             </v-btn>
           </v-window-item>
           <v-window-item
@@ -336,11 +358,32 @@ import { ref } from "vue";
 import { useCommunication } from "./communication";
 import dayjs from "dayjs";
 import { storeToRefs } from "pinia";
-import { mdiContentCopy, mdiDelete, mdiPlusCircleOutline } from "@mdi/js";
+import {
+  mdiContentCopy,
+  mdiDelete,
+  mdiPlusCircleOutline,
+  mdiArrowUp,
+  mdiArrowDown,
+  mdiPause,
+  mdiPlay,
+  mdiContentSave,
+  mdiSync,
+  mdiConsole,
+  mdiCog,
+  mdiPuzzle,
+  mdiInformation,
+} from "@mdi/js";
 import PluginsView from "./PluginsView.vue";
 
-const { logs, configLoaded, config, isSyncing, currentVersion, bottomBar } =
-  storeToRefs(useUiStore());
+const {
+  logs,
+  configLoaded,
+  config,
+  isSyncing,
+  isSyncPaused,
+  currentVersion,
+  bottomBar,
+} = storeToRefs(useUiStore());
 const communication = useCommunication();
 
 const tab = ref("tab-1");
@@ -382,7 +425,20 @@ function sendConfig() {
 }
 
 function sync() {
-  communication.sync();
+  if (isSyncing.value && !isSyncPaused.value) {
+    // If syncing and not paused, pause it
+    communication.pauseSync();
+  } else if (isSyncing.value && isSyncPaused.value) {
+    // If syncing and paused, resume it
+    communication.resumeSync();
+  } else {
+    // If not syncing, start sync
+    communication.sync();
+  }
+}
+
+function stopSync() {
+  communication.sync(); // This will abort the sync since it's already running
 }
 
 function pathPicked(syncItem: SyncMap, update: string) {
@@ -400,6 +456,34 @@ function pathPicked(syncItem: SyncMap, update: string) {
   display: flex;
   flex-direction: column;
   height: 100%;
+
+  &__actionable-field {
+    display: flex;
+  }
+  &__save-button {
+    z-index: 200;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+  }
+  &__sync-button {
+    z-index: 200;
+    position: absolute;
+    bottom: 0;
+    right: 100px;
+  }
+  &__stop-button {
+    z-index: 200;
+    position: absolute;
+    bottom: 0;
+    right: 200px;
+  }
+  &__switch {
+    margin: 0;
+  }
+  &__text-field {
+    margin: 0;
+  }
 }
 
 .log-wrap {
@@ -445,9 +529,6 @@ function pathPicked(syncItem: SyncMap, update: string) {
   &__panel {
     width: 100%;
     flex-grow: 0;
-  }
-
-  &__panel {
     background-color: #272727;
   }
 
@@ -473,30 +554,6 @@ function pathPicked(syncItem: SyncMap, update: string) {
   &__add-button {
     margin-bottom: 5px;
     width: 100%;
-  }
-}
-
-.config {
-  &__actionable-field {
-    display: flex;
-  }
-  &__save-button {
-    z-index: 200;
-    position: absolute;
-    bottom: 0;
-    right: 0;
-  }
-  &__sync-button {
-    z-index: 200;
-    position: absolute;
-    bottom: 0;
-    right: 72px;
-  }
-  &__switch {
-    margin: 0;
-  }
-  &__text-field {
-    margin: 0;
   }
 }
 

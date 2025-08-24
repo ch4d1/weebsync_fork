@@ -31,6 +31,7 @@ export const useUiStore = defineStore("uiStore", () => {
   let config = ref(createDefaultConfig());
   const configLoaded = ref(false);
   const isSyncing = ref(false);
+  const isSyncPaused = ref(false);
   const currentVersion = ref("LOADING");
   const latestVersion = ref("LOADING");
   const plugins = reactive<WeebsyncPluginBaseInfo[]>([]);
@@ -66,6 +67,10 @@ export const useUiStore = defineStore("uiStore", () => {
     isSyncing.value = syncStatusFromServer;
   });
 
+  communication.getSyncPauseStatus((syncPauseStatusFromServer) => {
+    isSyncPaused.value = syncPauseStatusFromServer;
+  });
+
   communication.socket.on("log", (log) => {
     logs.push(log);
   });
@@ -82,11 +87,16 @@ export const useUiStore = defineStore("uiStore", () => {
     isSyncing.value = isSyncingStatus;
   });
 
+  communication.socket.on("syncPauseStatus", (isSyncPausedStatus) => {
+    isSyncPaused.value = isSyncPausedStatus;
+  });
+
   return {
     config,
     configLoaded,
     logs,
     isSyncing,
+    isSyncPaused,
     currentVersion,
     latestVersion,
     bottomBar,

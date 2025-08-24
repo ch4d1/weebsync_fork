@@ -1,4 +1,4 @@
-import { abortSync, syncFiles } from "./sync";
+import { abortSync, syncFiles, pauseSync, resumeSync } from "./sync";
 import { saveConfig } from "./config";
 import { ApplicationState } from "./index";
 import { Config } from "@shared/types";
@@ -47,6 +47,9 @@ export function hookupCommunicationEvents(applicationState: ApplicationState) {
     socket.on("getSyncStatus", (cb) => {
       cb(applicationState.syncInProgress);
     });
+    socket.on("getSyncPauseStatus", (cb) => {
+      cb(applicationState.syncPaused);
+    });
     socket.on("getLatestVersion", (cb) => {
       fetch(
         "https://api.github.com/repos/BastianGanze/weebsync/releases/latest",
@@ -62,6 +65,12 @@ export function hookupCommunicationEvents(applicationState: ApplicationState) {
       } else {
         syncFiles(applicationState);
       }
+    });
+    socket.on("pauseSync", () => {
+      pauseSync(applicationState);
+    });
+    socket.on("resumeSync", () => {
+      resumeSync(applicationState);
     });
     socket.on("config", (config: Config) => {
       saveConfig(config, applicationState.communication);

@@ -33,6 +33,7 @@ export interface ServerToClientEvents {
   log: (log: Log) => void;
   updateBottomBar: (content: BottomBarUpdateEvent) => void;
   syncStatus: (syncStatus: boolean) => void;
+  syncPauseStatus: (syncPaused: boolean) => void;
   config: (config: Config) => void;
 }
 
@@ -53,7 +54,10 @@ export interface ClientToServerEvents {
   config: (config: Config) => void;
   getConfig: (cb: (config: Config) => void) => void;
   getSyncStatus: (cb: (syncStatus: boolean) => void) => void;
+  getSyncPauseStatus: (cb: (syncPaused: boolean) => void) => void;
   sync: () => void;
+  pauseSync: () => void;
+  resumeSync: () => void;
 }
 
 export interface InterServerEvents {

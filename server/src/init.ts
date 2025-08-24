@@ -40,5 +40,6 @@ async function setupApplication(
     plugins: [],
     configUpdateInProgress: false,
     syncInProgress: false,
+    syncPaused: false,
   };
 }

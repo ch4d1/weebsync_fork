@@ -43,6 +43,12 @@ export class Communication {
     }
   }
 
+  sendSyncPauseStatus(paused: boolean) {
+    if (this._socket) {
+      this._socket.emit("syncPauseStatus", paused);
+    }
+  }
+
   updateBottomBar(updateBottomBarEvent: BottomBarUpdateEvent) {
     if (this._socket) {
       this._socket.emit("updateBottomBar", updateBottomBarEvent);

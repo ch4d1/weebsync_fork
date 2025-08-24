@@ -58,8 +58,21 @@ export class Communication {
   getSyncSatus(cb: (syncStatus: boolean) => void) {
     this.socket.emit("getSyncStatus", cb);
   }
+
+  getSyncPauseStatus(cb: (syncPaused: boolean) => void) {
+    this.socket.emit("getSyncPauseStatus", cb);
+  }
+
   sync() {
     this.socket.emit("sync");
+  }
+
+  pauseSync() {
+    this.socket.emit("pauseSync");
+  }
+
+  resumeSync() {
+    this.socket.emit("resumeSync");
   }
 }
 

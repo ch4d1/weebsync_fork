@@ -28,6 +28,7 @@ export async function syncFiles(
   }
 
   updateSyncStatus(applicationState, true);
+  updateSyncPauseStatus(applicationState, false); // Reset pause state when starting sync
   const ftpClient = match(
     await getFTPClient(applicationState.config, applicationState.communication),
   )
@@ -48,12 +49,7 @@ export async function syncFiles(
   applicationState.communication.logInfo(`Attempting to sync.`);
   let filesDownloaded = false;
   for (const syncMap of applicationState.config.syncMaps) {
-    const syncResult = await sync(
-      syncMap,
-      ftpClient,
-      applicationState.config,
-      applicationState.communication,
-    );
+    const syncResult = await sync(syncMap, ftpClient, applicationState);
     const abortSync = match(syncResult)
       .with({ type: "FilesDownloaded" }, () => {
         filesDownloaded = true;
@@ -68,6 +64,7 @@ export async function syncFiles(
     }
   }
   updateSyncStatus(applicationState, false);
+  updateSyncPauseStatus(applicationState, false); // Reset pause state when sync ends
   applicationState.communication.logInfo(`Sync done!`);
   if (filesDownloaded) {
     for (const plugin of applicationState.plugins) {
@@ -86,6 +83,14 @@ export async function syncFiles(
 function updateSyncStatus(applicationState: ApplicationState, status: boolean) {
   applicationState.syncInProgress = status;
   applicationState.communication.sendSyncStatus(status);
+}
+
+function updateSyncPauseStatus(
+  applicationState: ApplicationState,
+  paused: boolean,
+) {
+  applicationState.syncPaused = paused;
+  applicationState.communication.sendSyncPauseStatus(paused);
 }
 
 export function toggleAutoSync(
@@ -179,12 +184,26 @@ export function abortSync(): void {
   currentWriteStream.destroy(new Error("Manual abortion."));
 }
 
+export function pauseSync(applicationState: ApplicationState): void {
+  if (applicationState.syncInProgress && !applicationState.syncPaused) {
+    updateSyncPauseStatus(applicationState, true);
+    applicationState.communication.logInfo("Sync paused.");
+  }
+}
+
+export function resumeSync(applicationState: ApplicationState): void {
+  if (applicationState.syncInProgress && applicationState.syncPaused) {
+    updateSyncPauseStatus(applicationState, false);
+    applicationState.communication.logInfo("Sync resumed.");
+  }
+}
+
 async function sync(
   syncMap: SyncMap,
   ftpClient: FTP,
-  config: Config,
-  communication: Communication,
+  applicationState: ApplicationState,
 ): Promise<SyncResult> {
+  const { config, communication } = applicationState;
   const localFolder = Handlebars.compile(syncMap.destinationFolder)({
     $syncName: syncMap.id,
   });
@@ -216,6 +235,11 @@ async function sync(
     }
     let filesDownloaded = 0;
     for (const [localFile, fileMatches] of Object.entries(fileMatchesMap)) {
+      // Check if sync is paused and wait until resumed
+      while (applicationState.syncPaused) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
       const latestRemoteMatch = getLatestMatchingFile(fileMatches);
 
       if (config.debugFileNames) {

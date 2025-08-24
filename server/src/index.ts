@@ -12,6 +12,7 @@ export interface ApplicationState {
   config: Config;
   configUpdateInProgress: boolean;
   syncInProgress: boolean;
+  syncPaused: boolean;
   communication: Communication;
   plugins: WeebsyncPlugin[];
   autoSyncIntervalHandler?: NodeJS.Timer;
