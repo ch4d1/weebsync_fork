@@ -30,7 +30,7 @@ async function onConfigUpdate(api, config) {
   }
 }
 
-var index = {
+const index = {
   name: "plex-media-refresh",
   version: "0.1",
   description: "Plugin to tell plex to rescan media files.",

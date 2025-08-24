@@ -1,7 +1,7 @@
 "use strict";
 
-var fs = require("fs");
-var child_process = require("child_process");
+const fs = require("fs");
+const child_process = require("child_process");
 const { spawnSync } = require("child_process");
 
 let intervalHandler;
@@ -139,7 +139,7 @@ sync_ratings = ${config.sync_ratings ? "True" : "False"}
 `;
 }
 
-var index = {
+const index = {
   name: "plex-anilist-sync",
   version: "0.1",
   description:
