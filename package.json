@@ -9,17 +9,6 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "pkg": {
-    "assets": [
-      "build/client/**/*"
-    ],
-    "outputPath": "dist",
-    "targets": [
-      "node22-linuxstatic",
-      "node22-win-x64",
-      "node22-mac-x64"
-    ]
-  },
   "scripts": {
     "client:build": "cd client && yarn build",
     "client:dev": "cd client && yarn dev",
@@ -28,6 +17,7 @@
     "build": "yarn run client:build && yarn run server:build",
     "start": "node build/index.js",
     "lint": "eslint client/src server/src && prettier --check .",
+    "build:sea": "node build-sea.js",
     "publishVersion": "PACKAGE_VERSION=$(cat package.json | grep \\\"version\\\" | head -1 | awk -F: '{ print $2 }' | sed 's/[\",]//g' | tr -d '[[:space:]]') && git tag v$PACKAGE_VERSION && git push --tags"
   },
   "author": "Bastian Ganze",
@@ -43,7 +33,7 @@
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
-    "pkg": "^5.8.1",
+    "postject": "^1.0.0-alpha.6",
     "prettier": "^3.4.2",
     "typescript": "^5.9.2"
   },
