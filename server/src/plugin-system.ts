@@ -1,17 +1,19 @@
 import process from "process";
-import { readdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  createWriteStream,
+  rmSync,
+} from "fs";
 import { ApplicationState } from "./index";
-import { createWriteStream, rmSync } from "fs";
 import extract from "extract-zip";
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, CreateAxiosDefaults } from "axios";
 import { Communication } from "./communication";
 import { WeebsyncPluginBaseInfo } from "@shared/types";
 import { CONFIG_FILE_DIR } from "./config";
-import { CreateAxiosDefaults } from "axios";
 
-export const PATH_TO_EXECUTABLE: string = process.cwd()
-  ? process.cwd()
-  : __dirname;
+export const PATH_TO_EXECUTABLE: string = process.cwd() ?? __dirname;
 
 export const pluginApis: { [name: string]: WeebsyncApi } = {};
 export async function initPluginSystem(applicationState: ApplicationState) {
@@ -31,16 +33,16 @@ export async function initPluginSystem(applicationState: ApplicationState) {
         await loadPlugin(pluginDir, pluginFolder, applicationState);
       } catch (e) {
         applicationState.communication.logError(
-          `Could not load plugin in folder "${pluginFolder}", reason: ${e.message}`,
+          `Could not load plugin in folder "${pluginFolder}", reason: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
     }
   } catch (e) {
-    if (e.code && e.code === "ENOENT") {
+    if (e && typeof e === "object" && "code" in e && e.code === "ENOENT") {
       return;
     }
     applicationState.communication.logError(
-      `Could not setup plugins due to unknown error: "${e.message}"`,
+      `Could not setup plugins due to unknown error: "${e instanceof Error ? e.message : String(e)}"`,
     );
   }
 }
@@ -90,20 +92,20 @@ async function downloadPluginResourceZipAndUnzip(
 }
 
 async function getAxiosInstance(config?: CreateAxiosDefaults) {
-  return Promise.resolve(axios.create(config ? config : {}));
+  return Promise.resolve(axios.create(config ?? {}));
 }
 
 async function loadOrCreatePluginConfiguration(
   plugin: WeebsyncPlugin,
 ): Promise<WeebsyncPlugin["config"]> {
   const configFileName = `${plugin.name}-config.json`;
-  let pluginConfig: WeebsyncPlugin["config"];
+  let pluginConfig: WeebsyncPlugin["config"] = {};
   try {
     pluginConfig = JSON.parse(
       readFileSync(`${CONFIG_FILE_DIR}/${configFileName}`, "utf-8"),
     );
   } catch (e) {
-    if (e.code && e.code === "ENOENT") {
+    if (e && typeof e === "object" && "code" in e && e.code === "ENOENT") {
       pluginConfig = {};
       for (const def of plugin.pluginConfigurationDefinition) {
         if (def.type === "label") {
@@ -142,7 +144,7 @@ async function loadPlugin(
           default: WeebsyncPlugin;
         }
       ).default;
-    } catch (e) {
+    } catch {
       applicationState.communication.logWarning(
         "Could not load plugin as .mjs, trying .js now...",
       );
@@ -168,7 +170,7 @@ async function loadPlugin(
     applicationState.plugins.push(plugin);
   } catch (e) {
     applicationState.communication.logError(
-      `Could not load plugin in dir "${pluginFolder}": ${e.message}`,
+      `Could not load plugin in dir "${pluginFolder}": ${e instanceof Error ? e.message : String(e)}`,
     );
   }
 }

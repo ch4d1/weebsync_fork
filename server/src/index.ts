@@ -15,8 +15,8 @@ export interface ApplicationState {
   syncPaused: boolean;
   communication: Communication;
   plugins: WeebsyncPlugin[];
-  autoSyncIntervalHandler?: NodeJS.Timer;
-  autoSyncTimerBroadcastHandler?: NodeJS.Timer;
+  autoSyncIntervalHandler?: NodeJS.Timeout;
+  autoSyncTimerBroadcastHandler?: NodeJS.Timeout;
   lastSyncStartTime?: number;
 }
 
@@ -31,7 +31,7 @@ server.register(staticFastify, {
   root: join(__dirname, "..", "..", "build", "client"),
 });
 
-server.get("/", function (req, reply) {
+server.get("/", function (_req, reply) {
   reply.sendFile("index.html");
 });
 

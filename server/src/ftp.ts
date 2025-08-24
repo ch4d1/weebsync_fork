@@ -170,7 +170,7 @@ export class FTP {
     let isAborted = false;
 
     const controlledTransform = new Transform({
-      transform(chunk: Buffer, encoding, callback) {
+      transform(chunk: Buffer, _encoding, callback) {
         // Handle abort
         if (isAborted) {
           callback(new Error("Manual abortion."));
@@ -304,6 +304,9 @@ export async function getFTPClient(
     freeFtpConnection.borrow();
     return { type: "Ok", data: freeFtpConnection };
   } catch (err) {
-    return { type: "ConnectionError", message: err };
+    return {
+      type: "ConnectionError",
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 }

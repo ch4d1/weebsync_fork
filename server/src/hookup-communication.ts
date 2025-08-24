@@ -4,10 +4,13 @@ import { ApplicationState } from "./index";
 import { Config } from "@shared/types";
 import { checkDir, listDir } from "./actions";
 import { pluginApis, savePluginConfiguration } from "./plugin-system";
+import type { PluginConfig } from "./types";
 
-export function hookupCommunicationEvents(applicationState: ApplicationState) {
+export function hookupCommunicationEvents(
+  applicationState: ApplicationState,
+): void {
   applicationState.communication.connect.sub((socket) => {
-    socket.on("getPlugins", (cb) => {
+    socket?.on("getPlugins", (cb) => {
       cb(
         applicationState.plugins.map((p) => ({
           name: p.name,
@@ -18,61 +21,66 @@ export function hookupCommunicationEvents(applicationState: ApplicationState) {
         })),
       );
     });
-    socket.on("sendPluginConfig", async (name, config) => {
+    socket?.on("sendPluginConfig", async (name: string, config: unknown) => {
       const plugin = applicationState.plugins.find((p) => p.name === name);
       if (plugin) {
         try {
           applicationState.communication.logInfo(
             `Saving config for plugin ${name}.`,
           );
-          await savePluginConfiguration(plugin.name, config);
+          await savePluginConfiguration(plugin.name, config as PluginConfig);
           if (plugin.onConfigUpdate) {
-            await plugin.onConfigUpdate(pluginApis[name], config);
+            await plugin.onConfigUpdate(
+              pluginApis[name],
+              config as PluginConfig,
+            );
           }
-          plugin.config = config;
+          plugin.config = config as PluginConfig;
           applicationState.communication.logInfo(`Config for ${name} saved!`);
         } catch (e) {
           applicationState.communication.logError(
-            `Error while onConfigUpdate of "${name}": ${e.message}`,
+            `Error while onConfigUpdate of "${name}": ${e instanceof Error ? e.message : String(e)}`,
           );
         }
       }
     });
-    socket.on("getLogs", (cb) => {
+    socket?.on("getLogs", (cb) => {
       cb(applicationState.communication.logs.getAll().filter((v) => v));
     });
-    socket.on("getVersion", (cb) => {
-      cb(process.env.__APP_VERSION__);
+    socket?.on("getVersion", (cb) => {
+      cb(process.env.__APP_VERSION__ ?? "unknown");
     });
-    socket.on("getSyncStatus", (cb) => {
+    socket?.on("getSyncStatus", (cb) => {
       cb(applicationState.syncInProgress);
     });
-    socket.on("getSyncPauseStatus", (cb) => {
+    socket?.on("getSyncPauseStatus", (cb) => {
       cb(applicationState.syncPaused);
     });
-    socket.on("getLatestVersion", (cb) => {
-      fetch(
-        "https://api.github.com/repos/BastianGanze/weebsync/releases/latest",
-      )
-        .then((res) => res.json())
-        .then((res) => {
-          cb(res.tag_name);
-        });
+    socket?.on("getLatestVersion", async (cb) => {
+      try {
+        const res = await fetch(
+          "https://api.github.com/repos/BastianGanze/weebsync/releases/latest",
+        );
+        const data = (await res.json()) as { tag_name: string };
+        cb(data.tag_name);
+      } catch {
+        cb("unknown");
+      }
     });
-    socket.on("sync", () => {
+    socket?.on("sync", () => {
       if (applicationState.syncInProgress) {
         abortSync();
       } else {
         syncFiles(applicationState);
       }
     });
-    socket.on("pauseSync", () => {
+    socket?.on("pauseSync", () => {
       pauseSync(applicationState);
     });
-    socket.on("resumeSync", () => {
+    socket?.on("resumeSync", () => {
       resumeSync(applicationState);
     });
-    socket.on("config", async (config: Config) => {
+    socket?.on("config", async (config: Config) => {
       // If sync is in progress, stop it first
       if (applicationState.syncInProgress) {
         applicationState.communication.logInfo(
@@ -94,16 +102,16 @@ export function hookupCommunicationEvents(applicationState: ApplicationState) {
         setTimeout(() => syncFiles(applicationState), 500);
       }
     });
-    socket.on("getConfig", (cb) => {
+    socket?.on("getConfig", (cb) => {
       cb(applicationState.config);
     });
-    socket.on("listDir", async (path, cb) => {
+    socket?.on("listDir", async (path: string, cb) => {
       const info = await listDir(path, applicationState);
       if (info) {
         cb(path, info);
       }
     });
-    socket.on("checkDir", async (path, cb) => {
+    socket?.on("checkDir", async (path: string, cb) => {
       cb(await checkDir(path, applicationState));
     });
   });

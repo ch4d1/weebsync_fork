@@ -2,10 +2,17 @@ import { Communication } from "./communication";
 import { setupTemplateHelper } from "./template";
 import { waitForCorrectConfig, watchConfigChanges } from "./config";
 import { FastifyInstance } from "fastify";
+import { Server } from "socket.io";
 import { syncFiles, toggleAutoSync } from "./sync";
 import { hookupCommunicationEvents } from "./hookup-communication";
 import { ApplicationState } from "./index";
 import { initPluginSystem } from "./plugin-system";
+
+declare module "fastify" {
+  interface FastifyInstance {
+    io: Server;
+  }
+}
 
 export async function init(server: FastifyInstance) {
   const communication = new Communication(server.io, server.log);

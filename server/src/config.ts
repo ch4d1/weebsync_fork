@@ -86,18 +86,16 @@ export async function waitForCorrectConfig(
   communication: Communication,
 ): Promise<Config> {
   communication.logInfo("Loading configuration.");
-  // eslint-disable-next-line no-async-promise-executor
-  return new Promise(async (resolve) => {
+  return new Promise((resolve) => {
     const tmpConfig = loadConfig(communication);
     if (tmpConfig) {
       resolve(tmpConfig);
     } else {
       const watcher = chokidar.watch(CONFIG_FILE_PATH);
-      watcher.on("change", async () => {
+      watcher.on("change", () => {
         const tmpConfig = loadConfig(communication);
         if (tmpConfig) {
-          await watcher.close();
-          resolve(tmpConfig);
+          watcher.close().then(() => resolve(tmpConfig));
         }
       });
     }

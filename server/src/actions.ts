@@ -16,12 +16,14 @@ export async function listDir(
         applicationState.communication.logError(
           `FTP Connection error: ${err}"`,
         );
+        return undefined;
       } finally {
         client.free();
       }
     })
     .with({ type: "ConnectionError", message: P.select() }, async (err) => {
       applicationState.communication.logError(`FTP Connection error: ${err}"`);
+      return undefined;
     })
     .exhaustive();
 }
@@ -37,7 +39,7 @@ export async function checkDir(
       try {
         await client.cd(path);
         return true;
-      } catch (err) {
+      } catch {
         return false;
       } finally {
         client.free();

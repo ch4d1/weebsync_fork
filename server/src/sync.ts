@@ -291,9 +291,9 @@ function shouldSkipFile(
   fileMatches: FileMatchesMapEntry,
   latestRemoteMatch: RemoteFileMatching,
 ): boolean {
-  return (
+  return Boolean(
     fileMatches.fileStatOnDisk &&
-    fileMatches.fileStatOnDisk.size === latestRemoteMatch.listingElement.size
+      fileMatches.fileStatOnDisk.size === latestRemoteMatch.listingElement.size,
   );
 }
 
