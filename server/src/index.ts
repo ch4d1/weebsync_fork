@@ -25,7 +25,9 @@ server.register(socketIoFastify, {
   cors: { origin: "*" },
   transports: ["websocket"],
 });
-server.register(staticFastify, { root: join(__dirname, "client") });
+server.register(staticFastify, {
+  root: join(__dirname, "..", "..", "build", "client"),
+});
 
 server.get("/", function (req, reply) {
   reply.sendFile("index.html");

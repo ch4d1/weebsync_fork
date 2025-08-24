@@ -1,5 +1,5 @@
 import { abortSync, syncFiles, pauseSync, resumeSync } from "./sync";
-import { saveConfig } from "./config";
+import { saveConfig, saveConfigDuringSync } from "./config";
 import { ApplicationState } from "./index";
 import { Config } from "@shared/types";
 import { checkDir, listDir } from "./actions";
@@ -72,8 +72,19 @@ export function hookupCommunicationEvents(applicationState: ApplicationState) {
     socket.on("resumeSync", () => {
       resumeSync(applicationState);
     });
-    socket.on("config", (config: Config) => {
-      saveConfig(config, applicationState.communication);
+    socket.on("config", async (config: Config) => {
+      if (applicationState.syncInProgress && applicationState.syncPaused) {
+        // Use the new function for config updates during sync
+        await saveConfigDuringSync(
+          config,
+          applicationState.config,
+          applicationState.communication,
+          applicationState,
+        );
+      } else {
+        // Use regular save for normal config updates
+        saveConfig(config, applicationState.communication);
+      }
     });
     socket.on("getConfig", (cb) => {
       cb(applicationState.config);

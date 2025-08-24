@@ -85,6 +85,19 @@
                         class="config__text-field"
                       />
                     </v-col>
+                    <v-col cols="12" sm="6" md="3">
+                      <v-text-field
+                        v-model="config.downloadSpeedLimitMbps"
+                        dense
+                        hide-details="auto"
+                        :rules="downloadSpeedLimitRules"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        label="Download speed limit (MB/s, 0 = no limit)"
+                        class="config__text-field"
+                      />
+                    </v-col>
                   </v-row>
                   <v-row justify="start">
                     <v-col cols="12" sm="6" md="3">
@@ -134,7 +147,7 @@
               elevation="0"
               class="config__save-button"
               :prepend-icon="mdiContentSave"
-              :disabled="isSyncing"
+              :disabled="isSyncing && !isSyncPaused"
               @click="sendConfig()"
             >
               Save
@@ -284,7 +297,7 @@
               elevation="0"
               class="config__save-button"
               :prepend-icon="mdiContentSave"
-              :disabled="isSyncing"
+              :disabled="isSyncing && !isSyncPaused"
               @click="sendConfig()"
             >
               Save
@@ -362,10 +375,7 @@ import {
   mdiContentCopy,
   mdiDelete,
   mdiPlusCircleOutline,
-  mdiArrowUp,
-  mdiArrowDown,
   mdiPause,
-  mdiPlay,
   mdiContentSave,
   mdiSync,
   mdiConsole,
@@ -391,6 +401,21 @@ const tab = ref("tab-1");
 const syncIntervalRules: Array<(value: number) => string | boolean> = [
   (v) => {
     console.log(v);
+    return true;
+  },
+];
+
+const downloadSpeedLimitRules: Array<
+  (value: number | string) => string | boolean
+> = [
+  (v) => {
+    const numValue = typeof v === "string" ? parseFloat(v) : v;
+    if (isNaN(numValue)) {
+      return "Must be a valid number";
+    }
+    if (numValue < 0) {
+      return "Speed limit cannot be negative";
+    }
     return true;
   },
 ];

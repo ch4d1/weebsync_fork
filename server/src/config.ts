@@ -66,9 +66,9 @@ export function createDefaultConfig(): Config {
 
 export type GetConfigResult =
   | {
-      type: "Ok";
-      data: Config;
-    }
+    type: "Ok";
+    data: Config;
+  }
   | { type: "WrongConfigError"; message: string }
   | { type: "UnknownError" };
 
@@ -99,10 +99,8 @@ export function loadConfig(communication: Communication): Config | undefined {
     .with({ type: "Ok", data: P.select() }, (res) => {
       const config = { ...res };
       for (const sync of config.syncMaps) {
-        if (sync.rename === undefined) {
-          sync.rename =
-            sync.fileRegex.length > 0 || sync.fileRenameTemplate.length > 0;
-        }
+        sync.rename ??=
+          sync.fileRegex.length > 0 || sync.fileRenameTemplate.length > 0;
       }
       return config;
     })
@@ -130,6 +128,55 @@ export function saveConfig(config: Config, communication: Communication): void {
     if (e instanceof Error) {
       communication.logError(`Error while saving config!: ${e.message}`);
     }
+  }
+}
+
+export async function saveConfigDuringSync(
+  newConfig: Config,
+  currentConfig: Config,
+  communication: Communication,
+  applicationState: any,
+): Promise<boolean> {
+  try {
+    // Check if critical server settings have changed (host, port, user, password)
+    const serverChanged =
+      newConfig.server.host !== currentConfig.server.host ||
+      newConfig.server.port !== currentConfig.server.port ||
+      newConfig.server.user !== currentConfig.server.user ||
+      newConfig.server.password !== currentConfig.server.password;
+
+    if (serverChanged) {
+      communication.logWarning(
+        "Server connection settings cannot be changed during sync. Please stop sync first.",
+      );
+      return false;
+    }
+
+    // Save the updated config
+    for (const sync of newConfig.syncMaps) {
+      sync.destinationFolder = sync.destinationFolder.replaceAll("\\", "/");
+    }
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(newConfig, null, 4));
+
+    // Update the application state with new config
+    Object.assign(applicationState.config, newConfig);
+
+    communication.logInfo(
+      "Configuration updated during sync. Changes will take effect for next downloads.",
+    );
+
+    // Check if the current file still matches the new sync maps
+    const { handleConfigUpdateDuringSync } = await import("./sync");
+    handleConfigUpdateDuringSync(applicationState);
+
+    return true;
+  } catch (e) {
+    if (e instanceof Error) {
+      communication.logError(
+        `Error while saving config during sync!: ${e.message}`,
+      );
+    }
+    return false;
   }
 }
 

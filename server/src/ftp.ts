@@ -6,16 +6,17 @@ import { Config } from "@shared/types";
 
 export type CreateFtpClientResult =
   | {
-      type: "Ok";
-      data: FTP;
-    }
+    type: "Ok";
+    data: FTP;
+  }
   | { type: "ConnectionError"; message: string };
 
 export class FTP {
-  private _client = new Client();
+  private readonly _client = new Client();
   private _used = false;
   private _lastAction: Date = new Date();
-  constructor(private _communication: Communication) {}
+
+  constructor(private readonly _communication: Communication) { }
 
   borrow() {
     if (this._used) {
@@ -72,36 +73,191 @@ export class FTP {
     hostFilePath: string,
     localFileStream: fs.WriteStream,
     size: number,
-  ): Promise<void> {
-    const interval = 200;
-    let bytesWrittenInLastInterval = 0;
-    let lastInterval = Date.now();
+    config?: Config,
+    applicationState?: any,
+  ): Promise<any> {
+    const updateInterval = 500; // Update every 500ms
+    let lastBytesWritten = 0;
+    let lastUpdateTime = Date.now();
+    let progressTimer: NodeJS.Timeout;
 
-    localFileStream.on("drain", () => {
-      if (Date.now() - lastInterval > interval) {
-        this._lastAction = new Date();
-        const progress = (localFileStream.bytesWritten / size) * 100;
-        const speed =
-          (localFileStream.bytesWritten - bytesWrittenInLastInterval) /
-          interval;
+    // Parse speed limit from config
+    let speedLimitMbps: number | null = null;
+    if (config?.downloadSpeedLimitMbps) {
+      if (typeof config.downloadSpeedLimitMbps === "string") {
+        speedLimitMbps = parseFloat(config.downloadSpeedLimitMbps);
+      } else {
+        speedLimitMbps = config.downloadSpeedLimitMbps;
+      }
+    }
+
+    const speedLimitBytesPerSecond =
+      speedLimitMbps && speedLimitMbps > 0
+        ? speedLimitMbps * 1024 * 1024
+        : null;
+
+    // Function to update progress
+    const updateProgress = () => {
+      const currentTime = Date.now();
+      const currentBytes = localFileStream.bytesWritten;
+      const timeDiff = currentTime - lastUpdateTime;
+
+      if (timeDiff > 0) {
+        const bytesDiff = currentBytes - lastBytesWritten;
+        const progress = (currentBytes / size) * 100;
+
+        // Calculate speed: bytes per millisecond -> bytes per second -> megabytes per second
+        const bytesPerSecond = (bytesDiff / timeDiff) * 1000;
+        const megabytesPerSecond = bytesPerSecond / (1024 * 1024);
+
         this._communication.updateBottomBar({
           fileProgress: `${progress.toFixed(2).padStart(6, " ")}%`,
-          downloadSpeed: `${(speed / 1000).toFixed(3).padStart(7, " ")} MB/s`,
+          downloadSpeed: `${megabytesPerSecond
+            .toFixed(2)
+            .padStart(7, " ")} MB/s`,
         });
-        bytesWrittenInLastInterval = localFileStream.bytesWritten;
-        lastInterval = Date.now();
+
+        lastBytesWritten = currentBytes;
+        lastUpdateTime = currentTime;
       }
-    });
+    };
+
+    // Start progress monitoring
+    progressTimer = setInterval(updateProgress, updateInterval);
 
     this._lastAction = new Date();
+    let transformStream = null;
+
     try {
-      await this._client.downloadTo(localFileStream, hostFilePath);
+      if (speedLimitBytesPerSecond || applicationState) {
+        // Use custom download with speed limiting and pause support
+        transformStream = await this._downloadWithControlledSpeed(
+          localFileStream,
+          hostFilePath,
+          speedLimitBytesPerSecond,
+          applicationState,
+        );
+      } else {
+        await this._client.downloadTo(localFileStream, hostFilePath);
+      }
     } finally {
+      // Clear the timer and reset progress display
+      clearInterval(progressTimer);
       this._communication.updateBottomBar({
         fileProgress: "",
         downloadSpeed: "",
       });
     }
+
+    return transformStream; // Return the transform stream for abort control
+  }
+
+  private async _downloadWithControlledSpeed(
+    localFileStream: fs.WriteStream,
+    hostFilePath: string,
+    speedLimitBytesPerSecond: number | null,
+    applicationState?: any,
+  ): Promise<any> {
+    // Wrap the original downloadTo with pause/resume and speed control
+    const originalDownloadTo = this._client.downloadTo.bind(this._client);
+
+    // Create a transform stream for speed limiting and pause control
+    const { Transform } = await import("stream");
+
+    let totalBytesTransferred = 0;
+    let lastSpeedCheckTime = Date.now();
+    let lastSpeedCheckBytes = 0;
+    let isAborted = false;
+
+    const controlledTransform = new Transform({
+      transform(chunk: Buffer, encoding, callback) {
+        // Handle abort
+        if (isAborted) {
+          callback(new Error("Manual abortion."));
+          return;
+        }
+
+        // Handle pause state
+        const checkPauseAndContinue = async () => {
+          // Wait for resume if paused
+          if (applicationState?.syncPaused) {
+            while (applicationState.syncPaused && !isAborted) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+          }
+
+          if (isAborted) {
+            callback(new Error("Manual abortion."));
+            return;
+          }
+
+          totalBytesTransferred += chunk.length;
+
+          // Speed limiting
+          if (speedLimitBytesPerSecond) {
+            const now = Date.now();
+            const timeSinceLastCheck = now - lastSpeedCheckTime;
+
+            if (timeSinceLastCheck >= 100) {
+              // Check every 100ms
+              const bytesSinceLastCheck =
+                totalBytesTransferred - lastSpeedCheckBytes;
+              const currentSpeed =
+                (bytesSinceLastCheck / timeSinceLastCheck) * 1000; // bytes per second
+
+              if (currentSpeed > speedLimitBytesPerSecond) {
+                // We're going too fast, add a delay
+                const delayMs =
+                  (bytesSinceLastCheck / speedLimitBytesPerSecond) * 1000 -
+                  timeSinceLastCheck;
+
+                if (delayMs > 0) {
+                  await new Promise((resolve) =>
+                    setTimeout(resolve, Math.min(delayMs, 1000)),
+                  );
+                }
+              }
+
+              lastSpeedCheckTime = now;
+              lastSpeedCheckBytes = totalBytesTransferred;
+            }
+          }
+
+          this.push(chunk);
+          callback();
+        };
+
+        checkPauseAndContinue().catch(callback);
+      },
+    });
+
+    // Set up abort listener
+    const abortHandler = () => {
+      isAborted = true;
+      controlledTransform.destroy(new Error("Manual abortion."));
+    };
+
+    // Listen for abort on the local file stream
+    localFileStream.on("error", (error) => {
+      if (error.message === "Manual abortion.") {
+        abortHandler();
+      }
+    });
+
+    // Pipe the transform stream to the local file stream
+    controlledTransform.pipe(localFileStream);
+
+    try {
+      // Download to the controlled transform stream
+      await originalDownloadTo(controlledTransform, hostFilePath);
+    } catch (error: any) {
+      if (error.message === "Manual abortion." || isAborted) {
+        throw new Error("Manual abortion.");
+      }
+      throw error;
+    }
+
+    return controlledTransform; // Return the transform stream for external control
   }
 }
 

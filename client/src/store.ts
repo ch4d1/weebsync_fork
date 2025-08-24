@@ -14,6 +14,7 @@ export function createDefaultConfig(): Config {
     autoSyncIntervalInMinutes: 30,
     debugFileNames: false,
     startAsTray: false,
+    downloadSpeedLimitMbps: 0,
     server: {
       host: "",
       password: "",

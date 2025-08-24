@@ -69,6 +69,7 @@ export interface Config {
   autoSyncIntervalInMinutes?: number;
   debugFileNames?: boolean;
   startAsTray?: boolean;
+  downloadSpeedLimitMbps?: number | string;
   server: {
     host: string;
     port: number;
