@@ -14,7 +14,7 @@
     "@digitak/esrun": "^3.2.24",
     "@types/extract-zip": "^2.0.1",
     "@types/node": "^22.12.0",
-    "esbuild": "^0.24.1",
+    "esbuild": "^0.25.9",
     "rollup-plugin-esbuild": "^6.1.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
