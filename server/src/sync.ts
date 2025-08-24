@@ -11,11 +11,6 @@ import { pluginApis } from "./plugin-system";
 
 let currentWriteStream: fs.WriteStream | null = null;
 let currentTransformStream: any = null;
-let currentDownloadInfo: {
-  remoteFile: string;
-  localFile: string;
-  syncMapId: string;
-} | null = null;
 
 export type SyncResult =
   | { type: "FilesDownloaded" }
@@ -331,16 +326,9 @@ async function downloadFile(
   localFile: string,
   config: Config,
   applicationState: ApplicationState,
-  syncMapId: string,
+  _syncMapId: string,
 ): Promise<void> {
   currentWriteStream = fs.createWriteStream(localFile);
-
-  // Set current download info for tracking
-  currentDownloadInfo = {
-    remoteFile: latestRemoteMatch.path,
-    localFile: localFile,
-    syncMapId: syncMapId,
-  };
 
   // Add error handler to prevent unhandled errors
   currentWriteStream.on("error", (error) => {
@@ -363,10 +351,9 @@ async function downloadFile(
       applicationState,
     );
   } finally {
-    // Reset the streams and download info after download completion or error
+    // Reset the streams after download completion or error
     currentWriteStream = null;
     currentTransformStream = null;
-    currentDownloadInfo = null;
   }
 }
 
@@ -519,50 +506,6 @@ export function resumeSync(applicationState: ApplicationState): void {
   if (applicationState.syncInProgress && applicationState.syncPaused) {
     updateSyncPauseStatus(applicationState, false);
     applicationState.communication.logInfo("Sync resumed.");
-  }
-}
-
-export function checkCurrentDownloadStillValid(newConfig: Config): boolean {
-  if (!currentDownloadInfo) {
-    return true; // No current download, so it's valid
-  }
-
-  // Find the sync map that was used for the current download
-  const matchingSyncMap = newConfig.syncMaps.find(
-    (syncMap) => syncMap.id === currentDownloadInfo.syncMapId,
-  );
-
-  if (!matchingSyncMap) {
-    return false; // Sync map was removed
-  }
-
-  // Check if the file would still match with the new settings
-  const regex = new RegExp(matchingSyncMap.fileRegex || ".*");
-  const remoteFileName = currentDownloadInfo.remoteFile.split("/").pop() || "";
-
-  return regex.test(remoteFileName);
-}
-
-export function handleConfigUpdateDuringSync(
-  applicationState: ApplicationState,
-): void {
-  if (
-    currentDownloadInfo &&
-    !checkCurrentDownloadStillValid(applicationState.config)
-  ) {
-    applicationState.communication.logWarning(
-      `Current download ${currentDownloadInfo.localFile} no longer matches updated sync settings. Aborting current download.`,
-    );
-
-    // Abort current download
-    if (currentTransformStream) {
-      currentTransformStream.destroy(new Error("Manual abortion."));
-    }
-    if (currentWriteStream) {
-      currentWriteStream.destroy(new Error("Manual abortion."));
-    }
-
-    currentDownloadInfo = null;
   }
 }
 

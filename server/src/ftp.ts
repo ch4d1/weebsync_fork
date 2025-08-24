@@ -193,32 +193,31 @@ export class FTP {
 
           totalBytesTransferred += chunk.length;
 
-          // Speed limiting
+          // Speed limiting - smoother approach
           if (speedLimitBytesPerSecond) {
             const now = Date.now();
             const timeSinceLastCheck = now - lastSpeedCheckTime;
 
-            if (timeSinceLastCheck >= 100) {
-              // Check every 100ms
+            if (timeSinceLastCheck >= 50) {
+              // Check every 50ms for smoother control
               const bytesSinceLastCheck =
                 totalBytesTransferred - lastSpeedCheckBytes;
-              const currentSpeed =
-                (bytesSinceLastCheck / timeSinceLastCheck) * 1000; // bytes per second
 
-              if (currentSpeed > speedLimitBytesPerSecond) {
-                // We're going too fast, add a delay
-                const delayMs =
-                  (bytesSinceLastCheck / speedLimitBytesPerSecond) * 1000 -
-                  timeSinceLastCheck;
+              // Calculate how long this chunk should have taken at target speed
+              const targetTimeForChunk =
+                (bytesSinceLastCheck / speedLimitBytesPerSecond) * 1000;
 
-                if (delayMs > 0) {
+              // If we processed it faster than target, add appropriate delay
+              if (timeSinceLastCheck < targetTimeForChunk) {
+                const delayNeeded = targetTimeForChunk - timeSinceLastCheck;
+                if (delayNeeded > 0) {
                   await new Promise((resolve) =>
-                    setTimeout(resolve, Math.min(delayMs, 1000)),
+                    setTimeout(resolve, Math.min(delayNeeded, 500)),
                   );
                 }
               }
 
-              lastSpeedCheckTime = now;
+              lastSpeedCheckTime = Date.now(); // Update to actual time after delay
               lastSpeedCheckBytes = totalBytesTransferred;
             }
           }
@@ -230,6 +229,8 @@ export class FTP {
         checkPauseAndContinue().catch(callback);
       },
     });
+
+    // Speed limit updates during download removed to prevent stream corruption
 
     // Set up abort listener
     const abortHandler = () => {

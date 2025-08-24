@@ -16,7 +16,19 @@ export const CONFIG_FILE_PATH = `${CONFIG_FILE_DIR}/${CONFIG_NAME}`;
 
 export function watchConfigChanges(applicationState: ApplicationState): void {
   const configWatcher = chokidar.watch(CONFIG_FILE_PATH);
+  let lastProgrammaticSave = 0;
+
+  // Store reference to track programmatic saves
+  (applicationState as any).markProgrammaticConfigSave = () => {
+    lastProgrammaticSave = Date.now();
+  };
+
   configWatcher.on("change", async (oath) => {
+    // Skip if this change was from a recent programmatic save
+    if (Date.now() - lastProgrammaticSave < 1000) {
+      return;
+    }
+
     if (applicationState.configUpdateInProgress) {
       return;
     }
@@ -25,20 +37,18 @@ export function watchConfigChanges(applicationState: ApplicationState): void {
       `"${oath}" changed, trying to update configuration.`,
     );
     applicationState.configUpdateInProgress = true;
-    if (applicationState.syncInProgress) {
+
+    if (applicationState.syncInProgress && !applicationState.syncPaused) {
       applicationState.communication.logInfo(
         "Sync is in progress, won't update configuration now.",
       );
       applicationState.configUpdateInProgress = false;
       return;
     }
+
     const tmpConfig = loadConfig(applicationState.communication);
     if (tmpConfig) {
-      applicationState.config = tmpConfig;
-      applicationState.communication.logInfo("Config successfully updated.");
-      applicationState.communication.sendConfig(
-        JSON.parse(JSON.stringify(tmpConfig)),
-      );
+      await applyConfigUpdate(tmpConfig, applicationState);
     } else {
       applicationState.communication.logError(
         "Config was broken, will keep the old config for now.",
@@ -118,12 +128,21 @@ export function loadConfig(communication: Communication): Config | undefined {
     .exhaustive();
 }
 
-export function saveConfig(config: Config, communication: Communication): void {
+export function saveConfig(
+  config: Config,
+  communication: Communication,
+  applicationState?: ApplicationState,
+): void {
   try {
     for (const sync of config.syncMaps) {
       sync.destinationFolder = sync.destinationFolder.replaceAll("\\", "/");
     }
     fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(config, null, 4));
+
+    // Apply config changes immediately if application state is available
+    if (applicationState) {
+      applyConfigUpdate(config, applicationState);
+    }
   } catch (e) {
     if (e instanceof Error) {
       communication.logError(`Error while saving config!: ${e.message}`);
@@ -131,53 +150,30 @@ export function saveConfig(config: Config, communication: Communication): void {
   }
 }
 
-export async function saveConfigDuringSync(
+async function applyConfigUpdate(
   newConfig: Config,
-  currentConfig: Config,
-  communication: Communication,
-  applicationState: any,
-): Promise<boolean> {
-  try {
-    // Check if critical server settings have changed (host, port, user, password)
-    const serverChanged =
-      newConfig.server.host !== currentConfig.server.host ||
-      newConfig.server.port !== currentConfig.server.port ||
-      newConfig.server.user !== currentConfig.server.user ||
-      newConfig.server.password !== currentConfig.server.password;
+  applicationState: ApplicationState,
+): Promise<void> {
+  const oldConfig = applicationState.config;
+  const communication = applicationState.communication;
 
-    if (serverChanged) {
-      communication.logWarning(
-        "Server connection settings cannot be changed during sync. Please stop sync first.",
-      );
-      return false;
+  // Apply the new configuration
+  applicationState.config = newConfig;
+
+  // Update auto-sync if interval changed
+  if (
+    oldConfig.autoSyncIntervalInMinutes !== newConfig.autoSyncIntervalInMinutes
+  ) {
+    const { toggleAutoSync } = await import("./sync");
+    if (applicationState.autoSyncIntervalHandler) {
+      communication.logInfo("Auto-sync interval updated, restarting timer.");
+      toggleAutoSync(applicationState, false);
+      toggleAutoSync(applicationState, true);
     }
-
-    // Save the updated config
-    for (const sync of newConfig.syncMaps) {
-      sync.destinationFolder = sync.destinationFolder.replaceAll("\\", "/");
-    }
-    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(newConfig, null, 4));
-
-    // Update the application state with new config
-    Object.assign(applicationState.config, newConfig);
-
-    communication.logInfo(
-      "Configuration updated during sync. Changes will take effect for next downloads.",
-    );
-
-    // Check if the current file still matches the new sync maps
-    const { handleConfigUpdateDuringSync } = await import("./sync");
-    handleConfigUpdateDuringSync(applicationState);
-
-    return true;
-  } catch (e) {
-    if (e instanceof Error) {
-      communication.logError(
-        `Error while saving config during sync!: ${e.message}`,
-      );
-    }
-    return false;
   }
+
+  communication.logInfo("Config successfully updated.");
+  communication.sendConfig(JSON.parse(JSON.stringify(newConfig)));
 }
 
 function createConfigFileIfNotExists(): Config {

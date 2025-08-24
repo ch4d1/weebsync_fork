@@ -1,5 +1,5 @@
 import { abortSync, syncFiles, pauseSync, resumeSync } from "./sync";
-import { saveConfig, saveConfigDuringSync } from "./config";
+import { saveConfig } from "./config";
 import { ApplicationState } from "./index";
 import { Config } from "@shared/types";
 import { checkDir, listDir } from "./actions";
@@ -73,17 +73,25 @@ export function hookupCommunicationEvents(applicationState: ApplicationState) {
       resumeSync(applicationState);
     });
     socket.on("config", async (config: Config) => {
-      if (applicationState.syncInProgress && applicationState.syncPaused) {
-        // Use the new function for config updates during sync
-        await saveConfigDuringSync(
-          config,
-          applicationState.config,
-          applicationState.communication,
-          applicationState,
+      // If sync is in progress, stop it first
+      if (applicationState.syncInProgress) {
+        applicationState.communication.logInfo(
+          "Config changed during sync. Stopping current sync and will restart.",
         );
-      } else {
-        // Use regular save for normal config updates
-        saveConfig(config, applicationState.communication);
+        abortSync();
+        // Wait a moment for abort to complete
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // Save the new config
+      saveConfig(config, applicationState.communication, applicationState);
+
+      // If auto-sync was running, restart it
+      if (applicationState.autoSyncIntervalHandler) {
+        applicationState.communication.logInfo(
+          "Restarting sync with new configuration.",
+        );
+        setTimeout(() => syncFiles(applicationState), 500);
       }
     });
     socket.on("getConfig", (cb) => {

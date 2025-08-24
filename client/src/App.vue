@@ -388,7 +388,6 @@
             variant="tonal"
             :prepend-icon="mdiContentSave"
             color="success"
-            :disabled="isSyncing && !isSyncPaused"
             class="mr-3"
             @click="sendConfig()"
           >
