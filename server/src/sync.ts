@@ -17,6 +17,20 @@ export type SyncResult =
   | { type: "Aborted" }
   | { type: "Error"; error: Error };
 
+interface RemoteFileMatching {
+  path: string;
+  listingElement: FileInfo;
+}
+
+interface FileMatchesMapEntry {
+  fileStatOnDisk: Stats | null;
+  remoteFilesMatching: RemoteFileMatching[];
+}
+
+interface FileMatchesMap {
+  [localFile: string]: FileMatchesMapEntry;
+}
+
 export async function syncFiles(
   applicationState: ApplicationState,
 ): Promise<void> {
@@ -28,7 +42,8 @@ export async function syncFiles(
   }
 
   updateSyncStatus(applicationState, true);
-  updateSyncPauseStatus(applicationState, false); // Reset pause state when starting sync
+  updateSyncPauseStatus(applicationState, false);
+
   const ftpClient = match(
     await getFTPClient(applicationState.config, applicationState.communication),
   )
@@ -48,6 +63,7 @@ export async function syncFiles(
 
   applicationState.communication.logInfo(`Attempting to sync.`);
   let filesDownloaded = false;
+
   for (const syncMap of applicationState.config.syncMaps) {
     const syncResult = await sync(syncMap, ftpClient, applicationState);
     const abortSync = match(syncResult)
@@ -63,9 +79,11 @@ export async function syncFiles(
       break;
     }
   }
+
   updateSyncStatus(applicationState, false);
-  updateSyncPauseStatus(applicationState, false); // Reset pause state when sync ends
+  updateSyncPauseStatus(applicationState, false);
   applicationState.communication.logInfo(`Sync done!`);
+
   if (filesDownloaded) {
     for (const plugin of applicationState.plugins) {
       if (plugin.onFilesDownloadSuccess) {
@@ -123,6 +141,67 @@ export function toggleAutoSync(
   }
 }
 
+// Helper functions for file processing
+function processFileMatch(
+  listingElement: FileInfo,
+  syncMap: SyncMap,
+  config: Config,
+  communication: Communication,
+): { localFile: string; remoteFile: string } | null {
+  const renameTemplate = syncMap.rename
+    ? Handlebars.compile(syncMap.fileRenameTemplate)
+    : Handlebars.compile(listingElement.name);
+  const regex = syncMap.rename ? new RegExp(syncMap.fileRegex) : /no_rename/;
+  const match = regex.exec(listingElement.name);
+
+  if (match === null) {
+    if (config.debugFileNames) {
+      communication.logDebug(
+        `File did not match regex "${listingElement.name}". Not loading.`,
+      );
+    }
+    return null;
+  }
+
+  const templateData: { [key: string]: string } = {
+    $syncName: syncMap.id,
+  };
+  for (let i = 0; i < match.length; i++) {
+    templateData["$" + i] = match[i];
+  }
+
+  const newName = renameTemplate(templateData);
+  const remoteFile = `${syncMap.originFolder}/${listingElement.name}`;
+  const localFile = Handlebars.compile(
+    `${syncMap.destinationFolder}/${newName}`,
+  )(templateData);
+
+  return { localFile, remoteFile };
+}
+
+function addFileToMatchesMap(
+  fileMatchesMap: FileMatchesMap,
+  localFile: string,
+  remoteFile: string,
+  listingElement: FileInfo,
+): void {
+  if (!fileMatchesMap[localFile]) {
+    fileMatchesMap[localFile] = {
+      fileStatOnDisk: null,
+      remoteFilesMatching: [],
+    };
+  }
+
+  fileMatchesMap[localFile].remoteFilesMatching.push({
+    path: remoteFile,
+    listingElement,
+  });
+
+  if (fs.existsSync(localFile)) {
+    fileMatchesMap[localFile].fileStatOnDisk = fs.statSync(localFile);
+  }
+}
+
 function getFileMatchesMap(
   dir: FileInfo[],
   syncMap: SyncMap,
@@ -132,72 +211,149 @@ function getFileMatchesMap(
   const fileMatchesMap: FileMatchesMap = {};
 
   for (const listingElement of dir) {
-    const renameTemplate = syncMap.rename
-      ? Handlebars.compile(syncMap.fileRenameTemplate)
-      : Handlebars.compile(listingElement.name);
-    const match = syncMap.rename
-      ? listingElement.name.match(syncMap.fileRegex)
-      : "no_rename".match("no_rename");
-    if (match === null) {
-      if (config.debugFileNames) {
-        communication.logDebug(
-          `File did not match regex "${listingElement.name}". Not loading.`,
-        );
-      }
-      continue;
-    }
-
-    const templateData: { [key: string]: string } = {
-      $syncName: syncMap.id,
-    };
-    for (let i = 0; i < match.length; i++) {
-      templateData["$" + i] = match[i];
-    }
-
-    const newName = renameTemplate(templateData);
-    const remoteFile = `${syncMap.originFolder}/${listingElement.name}`;
-    const localFile = Handlebars.compile(
-      `${syncMap.destinationFolder}/${newName}`,
-    )(templateData);
-
-    if (!fileMatchesMap[localFile]) {
-      fileMatchesMap[localFile] = {
-        fileStatOnDisk: null,
-        remoteFilesMatching: [],
-      };
-    }
-
-    fileMatchesMap[localFile].remoteFilesMatching.push({
-      path: remoteFile,
+    const result = processFileMatch(
       listingElement,
-    });
-
-    if (fs.existsSync(localFile)) {
-      fileMatchesMap[localFile].fileStatOnDisk = fs.statSync(localFile);
+      syncMap,
+      config,
+      communication,
+    );
+    if (result) {
+      addFileToMatchesMap(
+        fileMatchesMap,
+        result.localFile,
+        result.remoteFile,
+        listingElement,
+      );
     }
   }
 
   return fileMatchesMap;
 }
 
-export function abortSync(): void {
-  currentWriteStream.destroy(new Error("Manual abortion."));
-}
-
-export function pauseSync(applicationState: ApplicationState): void {
-  if (applicationState.syncInProgress && !applicationState.syncPaused) {
-    updateSyncPauseStatus(applicationState, true);
-    applicationState.communication.logInfo("Sync paused.");
+// Helper functions for sync process
+async function waitForResumeIfPaused(
+  applicationState: ApplicationState,
+): Promise<void> {
+  while (applicationState.syncPaused) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
-export function resumeSync(applicationState: ApplicationState): void {
-  if (applicationState.syncInProgress && applicationState.syncPaused) {
-    updateSyncPauseStatus(applicationState, false);
-    applicationState.communication.logInfo("Sync resumed.");
+function shouldSkipFile(
+  fileMatches: FileMatchesMapEntry,
+  latestRemoteMatch: RemoteFileMatching,
+): boolean {
+  return (
+    fileMatches.fileStatOnDisk &&
+    fileMatches.fileStatOnDisk.size === latestRemoteMatch.listingElement.size
+  );
+}
+
+function logFileAction(
+  fileMatches: FileMatchesMapEntry,
+  localFile: string,
+  latestRemoteMatch: RemoteFileMatching,
+  syncMap: SyncMap,
+  config: Config,
+  communication: Communication,
+): void {
+  if (config.debugFileNames && syncMap.rename) {
+    communication.logDebug(
+      `Renaming ${latestRemoteMatch.path} -> ${localFile}`,
+    );
+  }
+
+  if (fileMatches.fileStatOnDisk) {
+    communication.logWarning(
+      `New version or damaged file detected, reloading ${localFile}`,
+    );
+  } else {
+    communication.logInfo(`New episode detected, loading ${localFile} now.`);
   }
 }
 
+async function downloadFile(
+  ftpClient: FTP,
+  latestRemoteMatch: RemoteFileMatching,
+  localFile: string,
+): Promise<void> {
+  currentWriteStream = fs.createWriteStream(localFile);
+  await ftpClient.getFile(
+    latestRemoteMatch.path,
+    currentWriteStream,
+    latestRemoteMatch.listingElement.size,
+  );
+}
+
+async function processFileDownloads(
+  fileMatchesMap: FileMatchesMap,
+  syncMap: SyncMap,
+  ftpClient: FTP,
+  applicationState: ApplicationState,
+): Promise<number> {
+  const { config, communication } = applicationState;
+  let filesDownloaded = 0;
+
+  for (const [localFile, fileMatches] of Object.entries(fileMatchesMap)) {
+    await waitForResumeIfPaused(applicationState);
+
+    const latestRemoteMatch = getLatestMatchingFile(fileMatches);
+
+    if (shouldSkipFile(fileMatches, latestRemoteMatch)) {
+      continue;
+    }
+
+    logFileAction(
+      fileMatches,
+      localFile,
+      latestRemoteMatch,
+      syncMap,
+      config,
+      communication,
+    );
+    await downloadFile(ftpClient, latestRemoteMatch, localFile);
+    filesDownloaded++;
+  }
+
+  return filesDownloaded;
+}
+
+function handleSyncError(
+  error: unknown,
+  syncMap: SyncMap,
+  communication: Communication,
+): SyncResult {
+  if (!(error instanceof Error)) {
+    const errorMessage =
+      typeof error === "object" && error !== null
+        ? JSON.stringify(error)
+        : "Unknown error";
+    communication.logError(`Unknown error: ${errorMessage}`);
+    return { type: "Error", error: new Error(errorMessage) };
+  }
+
+  if ("code" in error) {
+    const codeError = error as { code: number };
+    if (codeError.code === 550) {
+      communication.logError(
+        `Directory "${syncMap.originFolder}" does not exist on remote.`,
+      );
+    }
+    return { type: "Error", error };
+  }
+
+  if (error.message === "Manual abortion.") {
+    communication.logWarning(
+      `Sync was manually stopped. File will be downloaded again.`,
+    );
+    return { type: "Aborted" };
+  }
+
+  communication.logError(`Unknown error ${error.message}`);
+  return { type: "Error", error };
+}
+
+// Main sync function - now with reduced complexity
 async function sync(
   syncMap: SyncMap,
   ftpClient: FTP,
@@ -207,6 +363,7 @@ async function sync(
   const localFolder = Handlebars.compile(syncMap.destinationFolder)({
     $syncName: syncMap.id,
   });
+
   if (!createLocalFolder(localFolder, communication).exists) {
     return {
       type: "Error",
@@ -233,91 +390,42 @@ async function sync(
         `Sync config "${syncMap.id}" has a rename configured but it matches no files.`,
       );
     }
-    let filesDownloaded = 0;
-    for (const [localFile, fileMatches] of Object.entries(fileMatchesMap)) {
-      // Check if sync is paused and wait until resumed
-      while (applicationState.syncPaused) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
 
-      const latestRemoteMatch = getLatestMatchingFile(fileMatches);
+    const filesDownloaded = await processFileDownloads(
+      fileMatchesMap,
+      syncMap,
+      ftpClient,
+      applicationState,
+    );
 
-      if (config.debugFileNames) {
-        if (syncMap.rename) {
-          communication.logDebug(
-            `Renaming ${latestRemoteMatch.path} -> ${localFile}`,
-          );
-        }
-      }
-
-      if (fileMatches.fileStatOnDisk) {
-        if (
-          fileMatches.fileStatOnDisk.size ==
-          latestRemoteMatch.listingElement.size
-        ) {
-          continue;
-        } else {
-          communication.logWarning(
-            `New version or damaged file detected, reloading ${localFile}`,
-          );
-        }
-      } else {
-        communication.logInfo(
-          `New episode detected, loading ${localFile} now.`,
-        );
-      }
-
-      currentWriteStream = fs.createWriteStream(localFile);
-      await ftpClient.getFile(
-        latestRemoteMatch.path,
-        currentWriteStream,
-        latestRemoteMatch.listingElement.size,
-      );
-      filesDownloaded++;
-    }
     return filesDownloaded > 0
       ? { type: "FilesDownloaded" }
       : { type: "NoDownloadsDetected" };
-  } catch (e) {
-    if (e instanceof Error) {
-      if ("code" in e) {
-        const error = e as { code: number };
-        if (error.code == 550) {
-          communication.logError(
-            `Directory "${syncMap.originFolder}" does not exist on remote.`,
-          );
-        }
-        return { type: "Error", error: e };
-      } else if (e.message === "Manual abortion.") {
-        communication.logWarning(
-          `Sync was manually stopped. File will be downloaded again.`,
-        );
-        return { type: "Aborted" };
-      } else {
-        communication.logError(`Unknown error ${e.message}`);
-        return { type: "Error", error: e };
-      }
-    }
-
-    communication.logError(`Unknown error ${e}`);
-    return { type: "Error", error: e };
+  } catch (error) {
+    return handleSyncError(error, syncMap, communication);
   }
 }
 
-interface RemoteFileMatching {
-  path: string;
-  listingElement: FileInfo;
+// Export functions
+export function abortSync(): void {
+  currentWriteStream.destroy(new Error("Manual abortion."));
 }
 
-interface FileMatchesMapEntry {
-  fileStatOnDisk: Stats | null;
-  remoteFilesMatching: RemoteFileMatching[];
+export function pauseSync(applicationState: ApplicationState): void {
+  if (applicationState.syncInProgress && !applicationState.syncPaused) {
+    updateSyncPauseStatus(applicationState, true);
+    applicationState.communication.logInfo("Sync paused.");
+  }
 }
 
-interface FileMatchesMap {
-  [localFile: string]: FileMatchesMapEntry;
+export function resumeSync(applicationState: ApplicationState): void {
+  if (applicationState.syncInProgress && applicationState.syncPaused) {
+    updateSyncPauseStatus(applicationState, false);
+    applicationState.communication.logInfo("Sync resumed.");
+  }
 }
 
+// Utility functions
 function getLatestMatchingFile(
   fileMatches: FileMatchesMapEntry,
 ): RemoteFileMatching {

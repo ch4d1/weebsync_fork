@@ -19,7 +19,7 @@ export async function init(server: FastifyInstance) {
   hookupCommunicationEvents(applicationState);
   if (applicationState.config.syncOnStart) {
     try {
-      syncFiles(applicationState);
+      await syncFiles(applicationState);
     } catch (e) {
       server.log.error(e);
     }

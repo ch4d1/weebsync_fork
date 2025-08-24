@@ -26,7 +26,7 @@ export class Communication {
       ServerToClientEvents,
       InterServerEvents
     >,
-    private _logger: FastifyInstance["log"],
+    private readonly _logger: FastifyInstance["log"],
   ) {
     io.on("connect", (socket) => {
       this._socket = socket;
