@@ -1,12 +1,12 @@
 # --- Build Stage ---
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 
 COPY . .
 
 RUN yarn install
 RUN yarn run build
 
-FROM node:18-alpine AS run
+FROM node:22-alpine AS run
 
 COPY --from=build /build ./
 
