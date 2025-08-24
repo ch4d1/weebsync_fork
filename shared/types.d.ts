@@ -35,6 +35,7 @@ export interface ServerToClientEvents {
   syncStatus: (syncStatus: boolean) => void;
   syncPauseStatus: (syncPaused: boolean) => void;
   config: (config: Config) => void;
+  autoSyncTimer: (timeRemaining: string | null) => void;
 }
 
 export interface ClientToServerEvents {

@@ -12,8 +12,7 @@
       class="text-decoration-none"
       target="_blank"
       href="https://github.com/BastianGanze/weebsync/releases/latest"
-      ><v-icon small :icon="mdiAlert" color="yellow" /> Click here to download
-      newest version.</a
+      >Click here to download newest version.</a
     >
     <span v-if="showLink && currentVersion === latestVersion"
       >Weebsync is up to date.</span

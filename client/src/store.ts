@@ -40,6 +40,7 @@ export const useUiStore = defineStore("uiStore", () => {
     fileProgress: "",
     downloadSpeed: "",
   });
+  const autoSyncTimeRemaining = ref<string | null>(null);
 
   communication.getVersion((v) => {
     currentVersion.value = v;
@@ -92,6 +93,10 @@ export const useUiStore = defineStore("uiStore", () => {
     isSyncPaused.value = isSyncPausedStatus;
   });
 
+  communication.socket.on("autoSyncTimer", (timeRemaining) => {
+    autoSyncTimeRemaining.value = timeRemaining;
+  });
+
   return {
     config,
     configLoaded,
@@ -102,5 +107,6 @@ export const useUiStore = defineStore("uiStore", () => {
     latestVersion,
     bottomBar,
     plugins,
+    autoSyncTimeRemaining,
   };
 });

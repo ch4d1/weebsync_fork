@@ -6,9 +6,9 @@ import { Config } from "@shared/types";
 
 export type CreateFtpClientResult =
   | {
-    type: "Ok";
-    data: FTP;
-  }
+      type: "Ok";
+      data: FTP;
+    }
   | { type: "ConnectionError"; message: string };
 
 export class FTP {
@@ -16,7 +16,7 @@ export class FTP {
   private _used = false;
   private _lastAction: Date = new Date();
 
-  constructor(private readonly _communication: Communication) { }
+  constructor(private readonly _communication: Communication) {}
 
   borrow() {
     if (this._used) {

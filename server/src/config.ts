@@ -66,9 +66,9 @@ export function createDefaultConfig(): Config {
 
 export type GetConfigResult =
   | {
-    type: "Ok";
-    data: Config;
-  }
+      type: "Ok";
+      data: Config;
+    }
   | { type: "WrongConfigError"; message: string }
   | { type: "UnknownError" };
 

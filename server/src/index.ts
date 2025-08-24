@@ -16,6 +16,8 @@ export interface ApplicationState {
   communication: Communication;
   plugins: WeebsyncPlugin[];
   autoSyncIntervalHandler?: NodeJS.Timer;
+  autoSyncTimerBroadcastHandler?: NodeJS.Timer;
+  lastSyncStartTime?: number;
 }
 
 const server = Fastify({

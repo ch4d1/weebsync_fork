@@ -50,6 +50,9 @@ export async function syncFiles(
   updateSyncStatus(applicationState, true);
   updateSyncPauseStatus(applicationState, false);
 
+  // Track when sync started for auto-sync timer
+  applicationState.lastSyncStartTime = Date.now();
+
   const ftpClient = match(
     await getFTPClient(applicationState.config, applicationState.communication),
   )
@@ -126,6 +129,11 @@ export function toggleAutoSync(
     delete applicationState.autoSyncIntervalHandler;
   }
 
+  if (applicationState.autoSyncTimerBroadcastHandler) {
+    clearInterval(applicationState.autoSyncTimerBroadcastHandler);
+    delete applicationState.autoSyncTimerBroadcastHandler;
+  }
+
   if (enabled) {
     const interval = Math.max(
       applicationState.config.autoSyncIntervalInMinutes
@@ -142,9 +150,48 @@ export function toggleAutoSync(
       () => syncFiles(applicationState),
       interval * 60 * 1000,
     );
+
+    // Start timer broadcast - update every second
+    startAutoSyncTimerBroadcast(applicationState, interval);
   } else {
     applicationState.communication.logInfo("AutoSync disabled!");
+    // Broadcast that auto-sync is disabled
+    applicationState.communication.io.emit("autoSyncTimer", null);
   }
+}
+
+function startAutoSyncTimerBroadcast(
+  applicationState: ApplicationState,
+  intervalMinutes: number,
+): void {
+  const intervalMs = intervalMinutes * 60 * 1000;
+
+  applicationState.autoSyncTimerBroadcastHandler = setInterval(() => {
+    if (applicationState.syncInProgress) {
+      // Don't show timer during sync
+      applicationState.communication.io.emit("autoSyncTimer", null);
+      return;
+    }
+
+    const now = Date.now();
+    const lastSync = applicationState.lastSyncStartTime || now;
+    const timeSinceLastSync = now - lastSync;
+    const timeUntilNext = intervalMs - timeSinceLastSync;
+
+    if (timeUntilNext <= 0) {
+      applicationState.communication.io.emit("autoSyncTimer", "Now");
+    } else {
+      const minutesRemaining = Math.floor(timeUntilNext / (60 * 1000));
+      const secondsRemaining = Math.floor((timeUntilNext % (60 * 1000)) / 1000);
+
+      const timeString =
+        minutesRemaining > 0
+          ? `${minutesRemaining}m ${secondsRemaining}s`
+          : `${secondsRemaining}s`;
+
+      applicationState.communication.io.emit("autoSyncTimer", timeString);
+    }
+  }, 1000);
 }
 
 // Helper functions for file processing
