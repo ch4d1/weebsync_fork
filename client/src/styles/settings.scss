@@ -1,0 +1,35 @@
+// Vuetify SCSS customization
+// Modern Vuetify settings and variable overrides
+
+// Typography
+$body-font-family: 'Lato', sans-serif;
+$heading-font-family: 'Lato', sans-serif;
+
+// Theme colors (can be customized)
+$primary: #1976d2;
+$secondary: #424242;
+$accent: #82b1ff;
+$error: #ff5252;
+$info: #2196f3;
+$success: #4caf50;
+$warning: #ff9800;
+
+// Border radius
+$border-radius-root: 8px;
+
+// Spacing
+$spacer: 1rem;
+
+// Elevation shadows (modern flat design)
+$elevation-umbra: (
+  0: (0, 0, 0, 0),
+  1: (0, 1px, 3px, 0),
+  2: (0, 2px, 4px, 0),
+  3: (0, 3px, 6px, 0),
+  4: (0, 4px, 8px, 0),
+  6: (0, 6px, 12px, 0),
+  8: (0, 8px, 16px, 0),
+  12: (0, 12px, 24px, 0),
+  16: (0, 16px, 32px, 0),
+  24: (0, 24px, 48px, 0),
+);
