@@ -180,6 +180,31 @@ export async function saveConfigDuringSync(
   }
 }
 
+function createConfigFileIfNotExists(): Config {
+  const config = createDefaultConfig();
+  fs.mkdirSync(CONFIG_FILE_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(config, null, 4));
+  return config;
+}
+
+function handleFileNotFoundError(): GetConfigResult {
+  const config = createConfigFileIfNotExists();
+  return { type: "Ok", data: config };
+}
+
+function handleError(e: unknown): GetConfigResult {
+  if (!e || !(e instanceof Error)) {
+    return { type: "UnknownError" };
+  }
+
+  const nodeError = e as NodeJS.ErrnoException;
+  if ("code" in nodeError && nodeError.code === "ENOENT") {
+    return handleFileNotFoundError();
+  }
+
+  return { type: "WrongConfigError", message: e.message };
+}
+
 function getConfig(): GetConfigResult {
   try {
     const file = fs.readFileSync(CONFIG_FILE_PATH).toString("utf-8");
@@ -190,21 +215,6 @@ function getConfig(): GetConfigResult {
       data: config,
     };
   } catch (e) {
-    if (e) {
-      if (e instanceof Error) {
-        if ("code" in (e as NodeJS.ErrnoException)) {
-          const result = (e as NodeJS.ErrnoException).code;
-          if (result === "ENOENT") {
-            const config = createDefaultConfig();
-            fs.mkdirSync(CONFIG_FILE_DIR, { recursive: true });
-            fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(config, null, 4));
-            return { type: "Ok", data: config };
-          }
-        } else {
-          return { type: "WrongConfigError", message: e.message };
-        }
-      }
-    }
+    return handleError(e);
   }
-  return { type: "UnknownError" };
 }
