@@ -38,6 +38,20 @@ export interface ServerToClientEvents {
   autoSyncTimer: (timeRemaining: string | null) => void;
 }
 
+export interface RegexDebugResult {
+  testFileName: string;
+  matches: RegexMatch[] | null;
+  renamedFileName: string | null;
+  error?: string;
+}
+
+export interface RegexMatch {
+  match: string;
+  index: number;
+  length: number;
+  groups: string[];
+}
+
 export interface ClientToServerEvents {
   getLogs: (cb: (logs: Log[]) => void) => void;
   getVersion: (cb: (version: string) => void) => void;
@@ -59,6 +73,13 @@ export interface ClientToServerEvents {
   sync: () => void;
   pauseSync: () => void;
   resumeSync: () => void;
+  getRegexDebugInfo: (
+    originFolder: string,
+    fileRegex: string,
+    fileRenameTemplate: string,
+    syncName: string,
+    cb: (result: RegexDebugResult) => void,
+  ) => void;
 }
 
 export interface InterServerEvents {

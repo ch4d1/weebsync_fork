@@ -4,6 +4,7 @@ import {
   Config,
   FileInfo,
   Log,
+  RegexDebugResult,
   ServerToClientEvents,
   WeebsyncPluginBaseInfo,
 } from "@shared/types";
@@ -72,6 +73,23 @@ export class Communication {
 
   resumeSync() {
     this.socket.emit("resumeSync");
+  }
+
+  getRegexDebugInfo(
+    originFolder: string,
+    fileRegex: string,
+    fileRenameTemplate: string,
+    syncName: string,
+    cb: (result: RegexDebugResult) => void,
+  ) {
+    this.socket.emit(
+      "getRegexDebugInfo",
+      originFolder,
+      fileRegex,
+      fileRenameTemplate,
+      syncName,
+      cb,
+    );
   }
 }
 

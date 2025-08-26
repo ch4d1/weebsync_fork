@@ -2,7 +2,7 @@ import { abortSync, syncFiles, pauseSync, resumeSync } from "./sync";
 import { saveConfig } from "./config";
 import { ApplicationState } from "./index";
 import { Config } from "@shared/types";
-import { checkDir, listDir } from "./actions";
+import { checkDir, listDir, getRegexDebugInfo } from "./actions";
 import { pluginApis, savePluginConfiguration } from "./plugin-system";
 import type { PluginConfig } from "./types";
 
@@ -114,5 +114,24 @@ export function hookupCommunicationEvents(
     socket?.on("checkDir", async (path: string, cb) => {
       cb(await checkDir(path, applicationState));
     });
+    socket?.on(
+      "getRegexDebugInfo",
+      async (
+        originFolder: string,
+        fileRegex: string,
+        fileRenameTemplate: string,
+        syncName: string,
+        cb,
+      ) => {
+        const result = await getRegexDebugInfo(
+          originFolder,
+          fileRegex,
+          fileRenameTemplate,
+          syncName,
+          applicationState,
+        );
+        cb(result);
+      },
+    );
   });
 }

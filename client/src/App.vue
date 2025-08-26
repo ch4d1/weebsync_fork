@@ -289,6 +289,19 @@
                                   />
                                 </v-col>
                               </v-row>
+                              <v-row v-if="syncItem.rename" justify="start">
+                                <v-col cols="12" sm="12">
+                                  <regex-debugger
+                                    :show="syncItem.rename"
+                                    :origin-folder="syncItem.originFolder"
+                                    :file-regex="syncItem.fileRegex"
+                                    :file-rename-template="
+                                      syncItem.fileRenameTemplate
+                                    "
+                                    :sync-name="syncItem.id"
+                                  />
+                                </v-col>
+                              </v-row>
                             </v-container>
                           </v-expansion-panel-text>
                         </v-expansion-panel>
@@ -428,6 +441,7 @@
 <script lang="ts" setup>
 import UpdateChecker from "./UpdateChecker.vue";
 import FtpViewer from "./FtpViewer.vue";
+import RegexDebugger from "./RegexDebugger.vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
 import { useUiStore } from "./store";
