@@ -1,7 +1,7 @@
 {
   "name": "client",
   "version": "0.8.0",
-  "description": "Modern Vue.js frontend for WeebSync - file synchronization web UI.",
+  "description": "A small tool to automatically sync files from an ftp server.",
   "license": "MIT",
   "type": "module",
   "main": "./build/main.js",

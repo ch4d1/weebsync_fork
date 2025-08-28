@@ -191,7 +191,7 @@ function fetchDirectory(itemPath: string) {
         path: `${current.value.path}/${r.name}`,
         isDir: r.type === 2,
         name: r.name,
-        children: r.type === 2 ? ([] as any[]) : undefined,
+        children: r.type === 2 ? ([] as TreeChild[]) : undefined,
       }));
       resolve(undefined);
     });

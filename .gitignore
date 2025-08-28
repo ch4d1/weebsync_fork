@@ -77,4 +77,10 @@ tmp/
 temp/
 
 # Runtime configuration
-*.config.local.*
+weebsync.config.json
+*-config.json
+
+#Plugins
+plugins/plexanisync/error.log
+plugins/plexanisync/PlexAniSync-master/*
+.actrc

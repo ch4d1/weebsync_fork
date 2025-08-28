@@ -1,0 +1,77 @@
+# Development environment with separate client and server containers
+#
+# Benefits:
+# - Independent debugging for client and server
+# - Hot-reload for both Vue/Vite frontend and Node.js backend
+# - Proper container networking and isolation
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up
+#
+# Access:
+#   Client (Vue/Vite): http://localhost:8080
+#   Server API: http://localhost:42380
+
+services:
+  weebsync-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    image: weebsync:dev
+    container_name: weebsync-client-dev
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://weebsync-server:42380
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./client:/app/client
+      - ./shared:/app/shared
+      - /app/client/node_modules
+    command: >
+      /bin/sh -c "
+      echo 'Installing dependencies...' &&
+      yarn install &&
+      echo 'Starting client dev server...' &&
+      yarn client:dev --host 0.0.0.0 --port 8080
+      "
+    stdin_open: true
+    tty: true
+    networks:
+      - weebsync-dev
+
+  weebsync-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    image: weebsync:dev
+    container_name: weebsync-server-dev
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      DEBUG: "weebsync:*"
+      WEEB_SYNC_SERVER_HTTP_PORT: 42380
+    ports:
+      - "42380:42380"
+    volumes:
+      - ./server:/app/server
+      - ./shared:/app/shared
+      - ./build:/app/build
+      - /app/server/node_modules
+    command: >
+      /bin/sh -c "
+      echo 'Installing dependencies...' &&
+      yarn install &&
+      echo 'Starting server with hot-reload...' &&
+      yarn server:dev
+      "
+    stdin_open: true
+    tty: true
+    networks:
+      - weebsync-dev
+
+networks:
+  weebsync-dev:

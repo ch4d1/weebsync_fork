@@ -3,8 +3,20 @@ import tsParser from "@typescript-eslint/parser";
 import vuePlugin from "eslint-plugin-vue";
 import vueParser from "vue-eslint-parser";
 import prettierPlugin from "eslint-plugin-prettier";
+import prettierConfig from "eslint-config-prettier";
 
 export default [
+  {
+    ignores: [
+      "build.js",
+      "build/",
+      "dist/",
+      "node_modules/",
+      "**/node_modules/",
+      "client/build/",
+      "server/build/",
+    ],
+  },
   {
     files: ["**/*.js", "**/*.ts"],
     languageOptions: {
@@ -22,7 +34,8 @@ export default [
       prettier: prettierPlugin,
     },
     rules: {
-      "prettier/prettier": ["error", {}],
+      ...prettierConfig.rules,
+      "prettier/prettier": "error",
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -49,7 +62,8 @@ export default [
       prettier: prettierPlugin,
     },
     rules: {
-      "prettier/prettier": ["error", {}],
+      ...prettierConfig.rules,
+      "prettier/prettier": "error",
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",

@@ -20,10 +20,7 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": [
-      "vite/client",
-      "@types/node"
-    ],
+    "types": ["vite/client", "@types/node"],
     "paths": {
       "*": ["node_modules/*"],
       "@shared/*": ["../shared/*"]
@@ -32,7 +29,5 @@
   "vueCompilerOptions": {
     "skipTemplateCodegen": false
   },
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*"]
 }

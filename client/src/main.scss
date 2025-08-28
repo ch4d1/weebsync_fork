@@ -5,8 +5,9 @@
 @import "vue3-perfect-scrollbar/dist/vue3-perfect-scrollbar.css";
 @import "vuetify/dist/vuetify.css";
 
-body, html {
-  font-family: 'Lato', sans-serif;
+body,
+html {
+  font-family: "Lato", sans-serif;
   font-size: 10.5pt;
   overflow-y: hidden !important;
   margin: 0;
@@ -15,17 +16,18 @@ body, html {
   color: #b9bbbe;
 }
 
-$font-family: 'Lato';
+$font-family: "Lato";
 
 .v-application {
-[class*='text-'] {
-  color: #b9bbbe;
-  font-family: $font-family, sans-serif !important;
-}
+  [class*="text-"] {
+    color: #b9bbbe;
+    font-family: $font-family, sans-serif !important;
+  }
   .v-label {
     font-size: 10.5pt !important;
   }
-  .v-window, .v-window-item {
+  .v-window,
+  .v-window-item {
     height: 100%;
   }
   .v-switch__thumb {
@@ -42,7 +44,7 @@ $font-family: 'Lato';
   justify-content: flex-end;
   align-items: flex-start;
 
-  >.v-label {
+  > .v-label {
     flex: 0 1 auto !important;
   }
   .v-application--is-ltr & {
@@ -59,6 +61,7 @@ $font-family: 'Lato';
   }
 }
 
-.ps--active-x > .ps__rail-x, .ps--active-y > .ps__rail-y {
+.ps--active-x > .ps__rail-x,
+.ps--active-y > .ps__rail-y {
   z-index: 500;
 }

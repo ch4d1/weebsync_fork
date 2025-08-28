@@ -12,6 +12,11 @@ import axios, { AxiosInstance, CreateAxiosDefaults } from "axios";
 import { Communication } from "./communication";
 import { WeebsyncPluginBaseInfo } from "@shared/types";
 import { CONFIG_FILE_DIR } from "./config";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export const PATH_TO_EXECUTABLE: string = process.cwd() ?? __dirname;
 
@@ -22,7 +27,9 @@ export async function initPluginSystem(applicationState: ApplicationState) {
   applicationState.communication.logDebug(pluginDir);
 
   try {
-    const pluginFolders = readdirSync(pluginDir);
+    const pluginFolders = readdirSync(pluginDir).filter(
+      (folder) => !folder.startsWith(".") && folder !== "node_modules",
+    );
     applicationState.communication.logInfo(
       `Found ${pluginFolders.length} plugin${
         pluginFolders.length === 0 || pluginFolders.length > 1 ? "s" : ""

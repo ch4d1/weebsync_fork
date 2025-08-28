@@ -5,6 +5,11 @@ import { Config } from "@shared/types";
 import { ApplicationState } from "./index";
 import { Communication } from "./communication";
 import process from "process";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const CONFIG_NAME = "weebsync.config.json";
 export const PATH_TO_EXECUTABLE: string = process.cwd()
@@ -19,7 +24,7 @@ export function watchConfigChanges(applicationState: ApplicationState): void {
   let lastProgrammaticSave = 0;
 
   // Store reference to track programmatic saves
-  (applicationState as any).markProgrammaticConfigSave = () => {
+  applicationState.markProgrammaticConfigSave = () => {
     lastProgrammaticSave = Date.now();
   };
 

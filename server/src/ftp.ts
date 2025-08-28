@@ -251,8 +251,10 @@ export class FTP {
     try {
       // Download to the controlled transform stream
       await originalDownloadTo(controlledTransform, hostFilePath);
-    } catch (error: any) {
-      if (error.message === "Manual abortion." || isAborted) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (errorMessage === "Manual abortion." || isAborted) {
         throw new Error("Manual abortion.");
       }
       throw error;

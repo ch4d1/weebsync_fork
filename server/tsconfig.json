@@ -18,15 +18,11 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": [
-      "@types/node"
-    ],
+    "types": ["@types/node"],
     "paths": {
       "*": ["node_modules/*"],
       "@shared/*": ["../shared/*"]
     }
   },
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*"]
 }

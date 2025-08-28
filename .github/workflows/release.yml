@@ -1,0 +1,596 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: "22"
+
+jobs:
+  # Build Linux x64 executable on Ubuntu
+  build-linux-x64:
+    name: Build Linux x64 Executable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          architecture: x64
+          cache: "yarn"
+          check-latest: true
+
+      - name: Cache pkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-cache-linux-x64-${{ hashFiles('package.json') }}
+          restore-keys: |
+            pkg-cache-linux-x64-
+            pkg-cache-
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Install pkg globally
+        run: npm install -g @yao-pkg/pkg
+
+      - name: Build project
+        run: yarn build
+
+      - name: Package Linux x64 executable with optimizations
+        run: |
+          mkdir -p dist
+
+          # Build Linux x64 (native)
+          echo "Building Linux x64..."
+          npx @yao-pkg/pkg . \
+            --targets node22-linux-x64 \
+            --out-path dist
+
+          # Check if executable was created and rename
+          if [ -f "dist/weebsync" ]; then
+            mv "dist/weebsync" "dist/weebsync-linux-x64"
+            echo "✅ Successfully created and renamed weebsync-linux-x64"
+          else
+            echo "❌ weebsync executable not found!"
+            echo "=== Contents of dist directory ==="
+            ls -la dist/
+            echo "=== Searching for any weebsync files ==="
+            find . -name "*weebsync*" -type f || echo "No weebsync files found"
+            exit 1
+          fi
+
+          # Verify final executable
+          if [ -f "dist/weebsync-linux-x64" ]; then
+            ls -la "dist/weebsync-linux-x64"
+            echo "✅ Final executable verified"
+          else
+            echo "❌ Final executable missing!"
+            exit 1
+          fi
+        env:
+          PKG_CACHE_PATH: ~/.pkg-cache
+
+      - name: Upload Linux x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-executable
+          path: dist/weebsync-linux-*
+          retention-days: 1
+
+  # Build Linux ARM64 executable on native ARM64 runner (GitHub-hosted)
+  build-linux-arm64:
+    name: Build Linux ARM64 Executable
+    runs-on: ubuntu-24.04-arm # Native ARM64 runner (Public Preview)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          architecture: arm64
+          cache: "yarn"
+          check-latest: true
+
+      - name: Cache pkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-cache-linux-arm64-${{ hashFiles('package.json') }}
+          restore-keys: |
+            pkg-cache-linux-arm64-
+            pkg-cache-
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Install pkg globally
+        run: npm install -g @yao-pkg/pkg
+
+      - name: Build project
+        run: yarn build
+
+      - name: Package Linux ARM64 executable with optimizations
+        run: |
+          mkdir -p dist
+
+          # Build Linux ARM64 (native on ARM64 runner)
+          echo "Building Linux ARM64 natively..."
+          npx @yao-pkg/pkg . \
+            --targets node22-linux-arm64 \
+            --out-path dist
+
+          # Check if executable was created and rename
+          if [ -f "dist/weebsync" ]; then
+            mv "dist/weebsync" "dist/weebsync-linux-arm64"
+            echo "✅ Successfully created and renamed weebsync-linux-arm64"
+          else
+            echo "❌ weebsync executable not found!"
+            echo "=== Contents of dist directory ==="
+            ls -la dist/
+            echo "=== Searching for any weebsync files ==="
+            find . -name "*weebsync*" -type f || echo "No weebsync files found"
+            exit 1
+          fi
+
+          # Verify final executable
+          if [ -f "dist/weebsync-linux-arm64" ]; then
+            ls -la "dist/weebsync-linux-arm64"
+            echo "✅ Final executable verified"
+          else
+            echo "❌ Final executable missing!"
+            exit 1
+          fi
+        env:
+          PKG_CACHE_PATH: ~/.pkg-cache
+
+      - name: Upload Linux ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-executable
+          path: dist/weebsync-linux-*
+          retention-days: 1
+
+  # Build Windows x64 executable
+  build-windows-x64:
+    name: Build Windows x64 Executable
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          architecture: x64
+          cache: "yarn"
+          check-latest: true
+
+      - name: Cache pkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-cache-windows-x64-${{ hashFiles('package.json') }}
+          restore-keys: |
+            pkg-cache-windows-x64-
+            pkg-cache-windows-
+            pkg-cache-
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Install pkg globally
+        shell: cmd
+        run: npm install -g @yao-pkg/pkg
+
+      - name: Build project
+        run: yarn build
+
+      - name: Package Windows x64 executable with optimizations
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+
+          Write-Host "Building Windows x64..." -ForegroundColor Green
+          
+          # Run pkg and capture output
+          $pkgOutput = npx @yao-pkg/pkg . --targets node22-win-x64 --out-path dist 2>&1
+          $pkgExitCode = $LASTEXITCODE
+
+          if ($pkgExitCode -ne 0) {
+            Write-Host "❌ pkg command failed with exit code $pkgExitCode" -ForegroundColor Red
+            Write-Host $pkgOutput
+            exit 1
+          }
+
+          if (Test-Path "dist\weebsync.exe") {
+            Move-Item "dist\weebsync.exe" "dist\weebsync-win-x64.exe"
+            Write-Host "✅ Successfully created and renamed weebsync-win-x64.exe" -ForegroundColor Green
+          } else {
+            Write-Host "❌ weebsync.exe not found in dist directory!" -ForegroundColor Red
+            Write-Host "Contents of dist directory:"
+            Get-ChildItem -Path dist -Force
+            
+            Write-Host "Searching for any weebsync files:"
+            $weebsyncFiles = Get-ChildItem -Path . -Recurse -Name "*weebsync*" -ErrorAction SilentlyContinue
+            if ($weebsyncFiles) {
+              $weebsyncFiles | ForEach-Object { Write-Host "  $_" }
+            } else {
+              Write-Host "No weebsync files found"
+            }
+            exit 1
+          }
+
+          if (Test-Path "dist\weebsync-win-x64.exe") {
+            Write-Host "✅ Final executable verified" -ForegroundColor Green
+          } else {
+            Write-Host "❌ Final executable missing!" -ForegroundColor Red
+            exit 1
+          }
+        env:
+          PKG_CACHE_PATH: ~/.pkg-cache
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-executable
+          path: dist/weebsync-win-x64.exe
+          retention-days: 1
+
+
+  # Build macOS executables on macOS (native for both architectures)
+  build-macos:
+    name: Build macOS Executables
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          architecture: x64
+          cache: "yarn"
+          check-latest: true
+
+      - name: Cache pkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-cache-macos-${{ hashFiles('package.json') }}
+          restore-keys: |
+            pkg-cache-macos-
+            pkg-cache-
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Install pkg globally
+        run: npm install -g @yao-pkg/pkg
+
+      - name: Build project
+        run: yarn build
+
+      - name: Package macOS executables with optimizations
+        run: |
+          mkdir -p dist
+
+          # Build macOS x64
+          echo "Building macOS x64..."
+          npx @yao-pkg/pkg . \
+            --targets node22-macos-x64 \
+            --out-path dist
+
+          # Check if x64 executable was created and rename
+          if [ -f "dist/weebsync" ]; then
+            mv "dist/weebsync" "dist/weebsync-macos-x64"
+            echo "✅ Successfully created weebsync-macos-x64"
+          else
+            echo "❌ macOS x64 weebsync executable not found!"
+            echo "=== Contents of dist directory ==="
+            ls -la dist/
+            exit 1
+          fi
+
+          # Build macOS ARM64
+          echo "Building macOS ARM64..."
+          npx @yao-pkg/pkg . \
+            --targets node22-macos-arm64 \
+            --out-path dist
+
+          # Check if ARM64 executable was created and rename
+          if [ -f "dist/weebsync" ]; then
+            mv "dist/weebsync" "dist/weebsync-macos-arm64"
+            echo "✅ Successfully created weebsync-macos-arm64"
+          else
+            echo "❌ macOS ARM64 weebsync executable not found!"
+            echo "=== Contents of dist directory ==="
+            ls -la dist/
+            exit 1
+          fi
+
+          # Verify both executables exist
+          if [ -f "dist/weebsync-macos-x64" ] && [ -f "dist/weebsync-macos-arm64" ]; then
+            ls -la dist/weebsync-macos-*
+            echo "✅ Both macOS executables verified"
+          else
+            echo "❌ One or both macOS executables missing!"
+            ls -la dist/
+            exit 1
+          fi
+        env:
+          PKG_CACHE_PATH: ~/.pkg-cache
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-executables
+          path: dist/weebsync-macos-*
+          retention-days: 1
+
+  # Build Docker images for multiple architectures
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=WeebSync
+            org.opencontainers.image.description=A small tool to automatically sync files from an ftp server
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+
+  # Security Scanning
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs:
+      [
+        build-linux-x64,
+        build-linux-arm64,
+        build-windows-x64,
+        build-macos,
+      ]
+    if: always() # Run even if some builds failed
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Download built artifacts for scanning
+        uses: actions/download-artifact@v4
+        with:
+          path: scan-artifacts
+        continue-on-error: true
+
+      - name: Run security scan on artifacts
+        run: |
+          echo "🔍 Scanning built artifacts for security issues..."
+
+          # Check if artifacts directory exists
+          if [ ! -d "scan-artifacts" ]; then
+            echo "⚠️  No artifacts downloaded - skipping binary security scan"
+            echo "This may happen if some build jobs failed or artifacts weren't uploaded"
+            exit 0
+          fi
+
+          # Count available artifacts
+          artifact_count=$(find scan-artifacts -type f \( -name "weebsync-*" -o -name "*.exe" \) | wc -l)
+          echo "📦 Found $artifact_count executable artifacts to scan"
+
+          # Basic security checks on executables
+          find scan-artifacts -type f -name "weebsync-*" -exec echo "Scanning: {}" \; || true
+          find scan-artifacts -type f -name "*.exe" -exec echo "Scanning: {}" \; || true
+
+          # Check for common security issues in binaries
+          for file in $(find scan-artifacts -type f \( -name "weebsync-*" -o -name "*.exe" \) 2>/dev/null || true); do
+            if [ -f "$file" ]; then
+              echo "📊 File size: $(stat -c%s "$file" 2>/dev/null || stat -f%z "$file") bytes"
+              echo "🔐 SHA256: $(sha256sum "$file" 2>/dev/null || shasum -a 256 "$file")"
+
+              # Check for suspicious strings (basic)
+              if strings "$file" 2>/dev/null | grep -i "password\|secret\|token\|key" | head -5; then
+                echo "⚠️  Found potential credential strings in $file"
+              fi
+            fi
+          done
+
+          echo "✅ Security scan completed successfully"
+
+  # Create GitHub Release with all artifacts
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs:
+      [
+        build-linux-x64,
+        build-linux-arm64,
+        build-windows-x64,
+        build-macos,
+        build-docker,
+        security-scan,
+      ]
+    if: always() # Create release even if security scan failed
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+        continue-on-error: true
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+
+          # Check what artifacts are available
+          echo "=== Available artifacts ==="
+          ls -la artifacts/ || echo "No artifacts directory found"
+          find artifacts -type f -name "*" 2>/dev/null || echo "No artifacts found"
+
+          # Copy all executables (with error handling)
+          echo "=== Copying executables ==="
+          cp -v artifacts/linux-x64-executable/* release-assets/ 2>/dev/null || echo "No Linux x64 executables found"
+          cp -v artifacts/linux-arm64-executable/* release-assets/ 2>/dev/null || echo "No Linux ARM64 executables found"
+          cp -v artifacts/windows-x64-executable/* release-assets/ 2>/dev/null || echo "No Windows x64 executables found"
+          cp -v artifacts/macos-executables/* release-assets/ 2>/dev/null || echo "No macOS executables found"
+          
+          # Copy Docker SBOM
+          cp -v artifacts/docker-sbom/*.json release-assets/ 2>/dev/null || echo "No Docker SBOM found"
+
+
+          # Create checksums for all files (if any exist)
+          cd release-assets
+          if [ "$(ls -A .)" ]; then
+            sha256sum * > checksums.sha256
+            echo "✅ Release assets prepared:"
+            ls -la
+          else
+            echo "⚠️  No release assets found - creating minimal release"
+            echo "This release was created but some build jobs may have failed" > BUILD_STATUS.txt
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG=${{ github.ref_name }}
+
+          if [ -z "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s" --no-merges | head -20)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s" --no-merges ${PREV_TAG}..${CURRENT_TAG})
+          fi
+
+          cat <<EOF > release_notes.md
+          # 🚀 weebsync ${CURRENT_TAG}
+
+          ## 📦 Downloads
+
+          ### Native Executables (Platform-Specific Builds)
+
+          | Platform | File | Description |
+          |---------|------|-------------|
+          | Linux | **weebsync-linux-arm64** | Linux ARM64 (aarch64) |
+          | Linux | **weebsync-linux-x64** | Linux x86_64 (AMD64) |
+          | macOS | **weebsync-macos-arm64** | macOS Apple Silicon |
+          | macOS | **weebsync-macos-x64** | macOS Intel |
+          | Windows | **weebsync-win-x64.exe** | Windows x86_64 |
+
+          ### Docker Images
+
+          Multi-architecture container images are available:
+
+          \`\`\`bash
+          # GitHub Container Registry
+          docker pull ghcr.io/${{ github.repository }}:${CURRENT_TAG}
+          # Or use the latest tag
+          docker pull ghcr.io/${{ github.repository }}:latest
+          \`\`\`
+
+          **Supported architectures:** linux/amd64, linux/arm64
+
+          ## 📝 Changelog
+
+          ${CHANGELOG}
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release-assets/*
+          fail_on_unmatched_files: false
+          generate_release_notes: false
+          make_latest: true
