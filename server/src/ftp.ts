@@ -49,7 +49,13 @@ export class FTP {
       port: config.server.port,
       password: config.server.password,
       secure: true,
-      secureOptions: { rejectUnauthorized: false },
+      secureOptions: {
+        rejectUnauthorized:
+          !config.server.allowSelfSignedCert &&
+          process.env.NODE_ENV !== "development",
+        // SSL certificate validation can be disabled via allowSelfSignedCert config option
+        // For development, you can also set NODE_ENV=development to bypass validation
+      },
     });
   }
 
@@ -266,23 +272,86 @@ export class FTP {
   }
 }
 
-let ftpConnections: FTP[] = [];
-const FTP_CONNECTION_TIMEOUT = 1000 * 60;
-setInterval(() => {
-  cleanFTPConnections();
-}, FTP_CONNECTION_TIMEOUT);
+// FTP Connection Pool with proper cleanup
+class FTPConnectionPool {
+  private connections: FTP[] = [];
+  private readonly maxConnections = 3;
+  private cleanupInterval: NodeJS.Timeout | undefined;
+  private readonly connectionTimeout = 1000 * 60; // 1 minute
 
-function cleanFTPConnections() {
-  ftpConnections = ftpConnections.filter((ftp) => {
-    if (
-      Date.now() - ftp.getLastActionTime() > FTP_CONNECTION_TIMEOUT ||
-      ftp.isClosed()
-    ) {
-      ftp.close();
-      return false;
+  constructor() {
+    this.startCleanup();
+  }
+
+  private startCleanup(): void {
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, this.connectionTimeout);
+  }
+
+  public destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
     }
-    return true;
-  });
+    this.connections.forEach((conn) => {
+      try {
+        conn.close();
+      } catch (error) {
+        // Log but don't throw during cleanup
+        console.error("Error closing connection during destroy:", error);
+      }
+    });
+    this.connections = [];
+  }
+
+  private cleanup(): void {
+    this.connections = this.connections.filter((ftp) => {
+      const shouldRemove =
+        Date.now() - ftp.getLastActionTime() > this.connectionTimeout ||
+        ftp.isClosed();
+
+      if (shouldRemove) {
+        try {
+          ftp.close();
+        } catch (error) {
+          // Log but don't throw during cleanup
+          console.error("Error closing connection during cleanup:", error);
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+
+  public getConnections(): FTP[] {
+    return this.connections;
+  }
+
+  public addConnection(connection: FTP): void {
+    this.connections.push(connection);
+  }
+
+  public getConnectionCount(): number {
+    return this.connections.length;
+  }
+
+  public getMaxConnections(): number {
+    return this.maxConnections;
+  }
+
+  public findAvailableConnection(): FTP | undefined {
+    this.cleanup(); // Clean before searching
+    return this.connections.find((f) => f.available() && !f.isClosed());
+  }
+}
+
+// Global connection pool instance
+const ftpConnectionPool = new FTPConnectionPool();
+
+// Export for cleanup on shutdown
+export function destroyFTPConnectionPool(): void {
+  ftpConnectionPool.destroy();
 }
 
 export async function getFTPClient(
@@ -290,18 +359,19 @@ export async function getFTPClient(
   communication: Communication,
 ): Promise<CreateFtpClientResult> {
   try {
-    cleanFTPConnections();
-    let freeFtpConnection = ftpConnections.find(
-      (f) => f.available() && !f.isClosed(),
-    );
+    let freeFtpConnection = ftpConnectionPool.findAvailableConnection();
+
     if (!freeFtpConnection) {
-      if (ftpConnections.length >= 3) {
+      if (
+        ftpConnectionPool.getConnectionCount() >=
+        ftpConnectionPool.getMaxConnections()
+      ) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         return await getFTPClient(config, communication);
       }
 
       freeFtpConnection = new FTP(communication);
-      ftpConnections.push(freeFtpConnection);
+      ftpConnectionPool.addConnection(freeFtpConnection);
       await freeFtpConnection.connect(config);
     }
 
