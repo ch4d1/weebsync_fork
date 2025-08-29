@@ -482,8 +482,20 @@ const communication = useCommunication();
 
 const tab = ref("tab-1");
 
-const syncIntervalRules: Array<(value: number) => string | boolean> = [
-  (_v) => true,
+const syncIntervalRules: Array<(value: number | string) => string | boolean> = [
+  (v) => {
+    const numValue = typeof v === "string" ? parseFloat(v) : v;
+    if (isNaN(numValue)) {
+      return "Sync interval must be a valid number";
+    }
+    if (numValue < 1) {
+      return "Sync interval must be at least 1 minute";
+    }
+    if (numValue > 1440) {
+      return "Sync interval cannot exceed 1440 minutes (24 hours)";
+    }
+    return true;
+  },
 ];
 
 const downloadSpeedLimitRules: Array<

@@ -1,8 +1,10 @@
 import fs from "fs";
+import { Transform } from "stream";
 
 import { Communication } from "./communication";
 import { FileInfo, Client, FTPResponse } from "basic-ftp";
 import { Config } from "@shared/types";
+import { ApplicationState } from "./index";
 
 export type CreateFtpClientResult =
   | {
@@ -74,8 +76,8 @@ export class FTP {
     localFileStream: fs.WriteStream,
     size: number,
     config?: Config,
-    applicationState?: any,
-  ): Promise<any> {
+    applicationState?: ApplicationState,
+  ): Promise<Transform | null> {
     const updateInterval = 500; // Update every 500ms
     let lastBytesWritten = 0;
     let lastUpdateTime = Date.now();
@@ -156,8 +158,8 @@ export class FTP {
     localFileStream: fs.WriteStream,
     hostFilePath: string,
     speedLimitBytesPerSecond: number | null,
-    applicationState?: any,
-  ): Promise<any> {
+    applicationState?: ApplicationState,
+  ): Promise<Transform> {
     // Wrap the original downloadTo with pause/resume and speed control
     const originalDownloadTo = this._client.downloadTo.bind(this._client);
 
