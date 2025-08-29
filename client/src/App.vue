@@ -66,11 +66,7 @@
             <perfect-scrollbar class="config">
               <template v-if="configLoaded">
                 <v-container :fluid="true">
-                  <v-row
-                    justify-sm="space-between"
-                    justify-md="start"
-                    justify-lg="start"
-                  >
+                  <v-row justify="start">
                     <v-col cols="12" sm="4" md="3" lg="2">
                       <v-switch
                         v-model="config.syncOnStart"
@@ -152,6 +148,16 @@
                         type="password"
                         label="Password"
                         class="config__text-field"
+                      />
+                    </v-col>
+                  </v-row>
+                  <v-row>
+                    <v-col cols="12" sm="6" md="6">
+                      <v-checkbox
+                        v-model="config.server.allowSelfSignedCert"
+                        label="Allow self-signed SSL certificates"
+                        hide-details
+                        class="config__checkbox"
                       />
                     </v-col>
                   </v-row>
