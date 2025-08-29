@@ -1,7 +1,6 @@
 # WeebSync
 
-[![CI](https://github.com/BastianGanze/weebsync/actions/workflows/ci.yml/badge.svg)](https://github.com/BastianGanze/weebsync/actions/workflows/ci.yml)
-[![Build](https://github.com/BastianGanze/weebsync/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/BastianGanze/weebsync/actions/workflows/build-and-publish.yml)
+[![Nightly Build](https://github.com/BastianGanze/weebsync/actions/workflows/nightly.yml/badge.svg)](https://github.com/BastianGanze/weebsync/actions/workflows/nightly.yml)
 [![Release](https://github.com/BastianGanze/weebsync/actions/workflows/release.yml/badge.svg)](https://github.com/BastianGanze/weebsync/actions/workflows/release.yml)
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-weebsync-blue)](https://github.com/BastianGanze/weebsync/pkgs/container/weebsync)
 
