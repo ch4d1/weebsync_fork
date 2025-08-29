@@ -6,8 +6,9 @@ import staticFastify from "@fastify/static";
 import { Communication } from "./communication";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { init } from "./init";
+import { init, cleanup } from "./init";
 import { WeebsyncPlugin } from "./plugin-system";
+import { destroyFTPConnectionPool } from "./ftp";
 import { readFileSync } from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,7 +35,10 @@ server.register(socketIoFastify, {
   transports: ["websocket"],
 });
 // Determine client path based on environment
-const isPkg = !!(process as any).pkg;
+interface ProcessWithPkg extends NodeJS.Process {
+  pkg?: unknown;
+}
+const isPkg = !!(process as ProcessWithPkg).pkg;
 const isDockerBuild = !isPkg && !__dirname.includes("build");
 
 let clientPath: string;
@@ -66,7 +70,7 @@ if (!isPkg) {
     try {
       const content = readFileSync(indexPath, "utf-8");
       reply.type("text/html").send(content);
-    } catch (err) {
+    } catch {
       reply.code(404).send({ error: "Not found" });
     }
   });
@@ -74,10 +78,11 @@ if (!isPkg) {
   // Serve static assets for PKG binaries
   server.get("/assets/*", function (req, reply) {
     try {
-      const assetPath = "assets/" + (req as any).params["*"];
+      const params = req.params as { "*": string };
+      const assetPath = "assets/" + params["*"];
       const filePath = join(clientPath, assetPath);
       const content = readFileSync(filePath);
-      
+
       // Set appropriate content-type based on file extension
       const ext = filePath.split(".").pop()?.toLowerCase();
       const contentTypes: Record<string, string> = {
@@ -94,9 +99,11 @@ if (!isPkg) {
         ttf: "font/ttf",
         eot: "application/vnd.ms-fontobject",
       };
-      
-      reply.type(contentTypes[ext || ""] || "application/octet-stream").send(content);
-    } catch (err) {
+
+      reply
+        .type(contentTypes[ext || ""] || "application/octet-stream")
+        .send(content);
+    } catch {
       reply.code(404).send({ error: "Not found" });
     }
   });
@@ -104,14 +111,15 @@ if (!isPkg) {
   // Serve other static files (PNG files in root)
   server.get("/:file(.*\\.png|.*\\.ico)", function (req, reply) {
     try {
-      const fileName = (req as any).params.file;
+      const params = req.params as { file: string };
+      const fileName = params.file;
       const filePath = join(clientPath, fileName);
       const content = readFileSync(filePath);
-      
+
       const ext = fileName.split(".").pop()?.toLowerCase();
       const contentType = ext === "png" ? "image/png" : "image/x-icon";
       reply.type(contentType).send(content);
-    } catch (err) {
+    } catch {
       reply.code(404).send({ error: "Not found" });
     }
   });
@@ -135,5 +143,35 @@ server
       await init(server);
     });
   });
+
+// Graceful shutdown handling
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
+
+function gracefulShutdown(signal: string) {
+  console.log(`Received ${signal}, starting graceful shutdown...`);
+
+  // Close server
+  server.close(() => {
+    console.log("HTTP server closed");
+
+    // Stop intervals and clean up application state
+    cleanup();
+
+    // Clean up FTP connection pool
+    destroyFTPConnectionPool();
+    console.log("FTP connection pool cleaned up");
+
+    process.exit(0);
+  });
+
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    console.error(
+      "Could not close connections in time, forcefully shutting down",
+    );
+    process.exit(1);
+  }, 10000);
+}
 
 export const viteNodeServer = server;

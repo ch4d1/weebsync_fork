@@ -1,4 +1,5 @@
 import fs, { Stats } from "fs";
+import { Transform } from "stream";
 import { getFTPClient, FTP } from "./ftp";
 import Handlebars from "handlebars";
 import ErrnoException = NodeJS.ErrnoException;
@@ -8,9 +9,40 @@ import { FileInfo } from "basic-ftp";
 import { ApplicationState } from "./index";
 import { Config, SyncMap } from "@shared/types";
 import { pluginApis } from "./plugin-system";
+import { EventEmitter } from "events";
+
+// SyncController for event-driven pause/resume
+class SyncController extends EventEmitter {
+  private _paused = false;
+
+  pause(): void {
+    this._paused = true;
+    this.emit("pause");
+  }
+
+  resume(): void {
+    this._paused = false;
+    this.emit("resume");
+  }
+
+  isPaused(): boolean {
+    return this._paused;
+  }
+
+  async waitForResume(): Promise<void> {
+    if (!this._paused) return;
+
+    return new Promise((resolve) => {
+      this.once("resume", resolve);
+    });
+  }
+}
+
+// Global sync controller instance
+const syncController = new SyncController();
 
 let currentWriteStream: fs.WriteStream | null = null;
-let currentTransformStream: any = null;
+let currentTransformStream: Transform | null = null;
 
 export type SyncResult =
   | { type: "FilesDownloaded" }
@@ -119,14 +151,15 @@ export function toggleAutoSync(
   applicationState: ApplicationState,
   enabled: boolean,
 ): void {
+  // Cleanup existing intervals with proper error handling
   if (applicationState.autoSyncIntervalHandler) {
     clearInterval(applicationState.autoSyncIntervalHandler);
-    delete applicationState.autoSyncIntervalHandler;
+    applicationState.autoSyncIntervalHandler = undefined;
   }
 
   if (applicationState.autoSyncTimerBroadcastHandler) {
     clearInterval(applicationState.autoSyncTimerBroadcastHandler);
-    delete applicationState.autoSyncTimerBroadcastHandler;
+    applicationState.autoSyncTimerBroadcastHandler = undefined;
   }
 
   if (enabled) {
@@ -142,7 +175,14 @@ export function toggleAutoSync(
     );
 
     applicationState.autoSyncIntervalHandler = setInterval(
-      () => syncFiles(applicationState),
+      () => {
+        // Add error handling to prevent crashes
+        syncFiles(applicationState).catch((error) => {
+          applicationState.communication.logError(
+            `Auto-sync failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+          );
+        });
+      },
       interval * 60 * 1000,
     );
 
@@ -282,9 +322,15 @@ function getFileMatchesMap(
 async function waitForResumeIfPaused(
   applicationState: ApplicationState,
 ): Promise<void> {
-  while (applicationState.syncPaused) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  // Sync global sync controller with application state
+  if (applicationState.syncPaused && !syncController.isPaused()) {
+    syncController.pause();
+  } else if (!applicationState.syncPaused && syncController.isPaused()) {
+    syncController.resume();
   }
+
+  // Use event-driven approach instead of polling
+  await syncController.waitForResume();
 }
 
 function shouldSkipFile(
@@ -498,6 +544,7 @@ export function abortSync(): void {
 export function pauseSync(applicationState: ApplicationState): void {
   if (applicationState.syncInProgress && !applicationState.syncPaused) {
     updateSyncPauseStatus(applicationState, true);
+    syncController.pause(); // Update event-driven controller
     applicationState.communication.logInfo("Sync paused.");
   }
 }
@@ -505,6 +552,7 @@ export function pauseSync(applicationState: ApplicationState): void {
 export function resumeSync(applicationState: ApplicationState): void {
   if (applicationState.syncInProgress && applicationState.syncPaused) {
     updateSyncPauseStatus(applicationState, false);
+    syncController.resume(); // Update event-driven controller
     applicationState.communication.logInfo("Sync resumed.");
   }
 }

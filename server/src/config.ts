@@ -51,7 +51,7 @@ export function watchConfigChanges(applicationState: ApplicationState): void {
       return;
     }
 
-    const tmpConfig = loadConfig(applicationState.communication);
+    const tmpConfig = await loadConfig(applicationState.communication);
     if (tmpConfig) {
       await applyConfigUpdate(tmpConfig, applicationState);
     } else {
@@ -74,6 +74,7 @@ export function createDefaultConfig(): Config {
       password: "",
       port: 21,
       user: "",
+      allowSelfSignedCert: false,
     },
     syncMaps: [],
   };
@@ -91,24 +92,26 @@ export async function waitForCorrectConfig(
   communication: Communication,
 ): Promise<Config> {
   communication.logInfo("Loading configuration.");
+  const tmpConfig = await loadConfig(communication);
+  if (tmpConfig) {
+    return tmpConfig;
+  }
+
   return new Promise((resolve) => {
-    const tmpConfig = loadConfig(communication);
-    if (tmpConfig) {
-      resolve(tmpConfig);
-    } else {
-      const watcher = chokidar.watch(CONFIG_FILE_PATH);
-      watcher.on("change", () => {
-        const tmpConfig = loadConfig(communication);
-        if (tmpConfig) {
-          watcher.close().then(() => resolve(tmpConfig));
-        }
-      });
-    }
+    const watcher = chokidar.watch(CONFIG_FILE_PATH);
+    watcher.on("change", async () => {
+      const tmpConfig = await loadConfig(communication);
+      if (tmpConfig) {
+        watcher.close().then(() => resolve(tmpConfig));
+      }
+    });
   });
 }
 
-export function loadConfig(communication: Communication): Config | undefined {
-  return match(getConfig())
+export async function loadConfig(
+  communication: Communication,
+): Promise<Config | undefined> {
+  return match(await getConfig())
     .with({ type: "Ok", data: P.select() }, (res) => {
       const config = { ...res };
       for (const sync of config.syncMaps) {
@@ -204,14 +207,35 @@ function handleError(e: unknown): GetConfigResult {
   return { type: "WrongConfigError", message: e.message };
 }
 
-function getConfig(): GetConfigResult {
+async function getConfig(): Promise<GetConfigResult> {
   try {
     const file = fs.readFileSync(CONFIG_FILE_PATH).toString("utf-8");
-    const config = JSON.parse(file) as Config;
+
+    // Safe JSON parsing with proper error handling
+    let config: Config;
+    try {
+      config = JSON.parse(file) as Config;
+    } catch (parseError) {
+      return {
+        type: "WrongConfigError",
+        message: `Invalid JSON format in config file: ${parseError instanceof Error ? parseError.message : "Unknown parse error"}`,
+      };
+    }
+
+    // Validate config structure and content
+    const { validateConfig } = await import("./validation");
+    const validation = validateConfig(config);
+
+    if (!validation.isValid) {
+      return {
+        type: "WrongConfigError",
+        message: validation.error || "Configuration validation failed",
+      };
+    }
 
     return {
       type: "Ok",
-      data: config,
+      data: validation.value!,
     };
   } catch (e) {
     return handleError(e);
