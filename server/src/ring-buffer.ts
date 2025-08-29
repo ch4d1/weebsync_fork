@@ -1,31 +1,51 @@
 export class RingBuffer<T> {
-  private readonly _buffer: T[];
-  private _cursor: number;
+  private readonly _buffer: (T | undefined)[];
+  private _head: number = 0;
+  private _tail: number = 0;
+  private _size: number = 0;
   private readonly _capacity: number;
 
   constructor(capacity: number = 200) {
     this._capacity = capacity;
-    this._buffer = new Array<T>(capacity);
-    this._cursor = 0;
+    this._buffer = new Array<T | undefined>(capacity);
   }
 
   push(item: T): void {
-    this._buffer[this._cursor] = item;
-    this._cursor = (this._cursor + 1) % this._capacity;
+    this._buffer[this._tail] = item;
+    this._tail = (this._tail + 1) % this._capacity;
+
+    if (this._size < this._capacity) {
+      this._size++;
+    } else {
+      this._head = (this._head + 1) % this._capacity;
+    }
   }
 
-  get(index: number): T {
-    if (index >= this._capacity) {
-      throw new Error("Index out of bounds");
+  get(index: number): T | undefined {
+    if (index >= this._size) {
+      return undefined;
     }
-    return this._buffer[(this._cursor + index) % this._capacity];
+    return this._buffer[(this._head + index) % this._capacity];
   }
 
   getAll(): T[] {
-    let result = [];
-    for (let i = this._cursor; i < this._cursor + this._capacity; i++) {
-      result.push(this._buffer[i % this._capacity]);
+    const result: T[] = [];
+    let count = this._size;
+    let index = this._head;
+
+    while (count > 0) {
+      const item = this._buffer[index];
+      if (item !== undefined) {
+        result.push(item);
+      }
+      index = (index + 1) % this._capacity;
+      count--;
     }
+
     return result;
+  }
+
+  get size(): number {
+    return this._size;
   }
 }
