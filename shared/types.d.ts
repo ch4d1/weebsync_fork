@@ -97,6 +97,7 @@ export interface Config {
     port: number;
     user: string;
     password: string;
+    allowSelfSignedCert?: boolean;
   };
   syncMaps: SyncMap[];
 }
