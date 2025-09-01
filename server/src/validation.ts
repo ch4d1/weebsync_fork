@@ -3,12 +3,12 @@ import { Config, SyncMap } from "@shared/types";
 
 // Validation schemas
 export const syncMapSchema = Joi.object<SyncMap>({
-  id: Joi.string().alphanum().min(1).max(50).required(),
+  id: Joi.string().min(1).max(50).required(),
   originFolder: Joi.string().min(1).max(500).required(),
   destinationFolder: Joi.string().min(1).max(500).required(),
-  fileRegex: Joi.string().max(1000).default(".*"),
-  fileRenameTemplate: Joi.string().max(500).allow("").default(""),
-  rename: Joi.boolean().default(true),
+  fileRegex: Joi.string().max(1000).allow("").optional().default(".*"),
+  fileRenameTemplate: Joi.string().max(500).allow("").optional().default(""),
+  rename: Joi.boolean().optional().default(false),
 });
 
 export const serverConfigSchema = Joi.object({
