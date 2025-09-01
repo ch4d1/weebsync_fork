@@ -440,7 +440,7 @@
                           <strong>Source:</strong>
                           <v-chip
                             v-for="provider in getStructuredVersionInfo(version)
-                              .providers"
+                              ?.providers || []"
                             :key="provider.tag"
                             size="x-small"
                             class="ml-1"
@@ -464,7 +464,7 @@
                           <strong>Audio:</strong>
                           <v-chip
                             v-for="lang in getStructuredVersionInfo(version)
-                              .dubLanguages"
+                              ?.dubLanguages || []"
                             :key="lang.code"
                             size="x-small"
                             variant="outlined"
@@ -485,7 +485,7 @@
                           <strong>Subs:</strong>
                           <v-chip
                             v-for="lang in getStructuredVersionInfo(version)
-                              .subLanguages"
+                              ?.subLanguages || []"
                             :key="lang.code"
                             size="x-small"
                             variant="outlined"
@@ -509,14 +509,14 @@
                             class="mr-3"
                           >
                             <strong>Quality:</strong>
-                            {{ getStructuredVersionInfo(version).quality }}
+                            {{ getStructuredVersionInfo(version)?.quality }}
                           </span>
                           <span
                             v-if="getStructuredVersionInfo(version)?.season"
                             class="mr-3"
                           >
                             <strong>Season:</strong>
-                            {{ getStructuredVersionInfo(version).season }}
+                            {{ getStructuredVersionInfo(version)?.season }}
                           </span>
                           <v-chip
                             v-if="getStructuredVersionInfo(version)?.special"
@@ -2367,6 +2367,14 @@ function triggerMetadataLoadingIfNeeded() {
               isGrouped: !!item.isGrouped,
             })),
           );
+
+          // Emit the metadata update to FtpViewer so it can update its children
+          console.log(
+            "🎯 AnimeSeasonViewer: Emitting metadata-update to FtpViewer with",
+            result.length,
+            "items",
+          );
+          emit("metadata-update", result);
         }
       },
     );

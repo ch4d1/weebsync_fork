@@ -114,7 +114,7 @@
         <!-- Use AnimeSeasonViewer for season directories -->
         <AnimeSeasonViewer
           v-if="usingPluginComponent"
-          :items="current.children || []"
+          :items="convertedAnimeItems"
           :path="current.path"
           :socket="communication.socket"
           :loading-status="metadataLoadingStatus"
@@ -665,6 +665,92 @@ const { getBestComponentForPath, initializeComponents } =
 // Computed property for origin folder
 const originFolder = computed(() => syncItem.value.originFolder);
 
+// Convert TreeChild[] to AnimeItem[] for AnimeSeasonViewer
+const convertedAnimeItems = computed(() => {
+  const children = current.value.children || [];
+
+  // Debug: Log when conversion happens
+  console.log(
+    "🔄 FtpViewer: Converting",
+    children.length,
+    "children to AnimeItems",
+    {
+      path: current.value.path,
+      sampleMetadata: children.slice(0, 3).map((c) => ({
+        name: c.name,
+        hasMetadata: !!c.animeMetadata,
+        isProcessing: c.isProcessing,
+      })),
+    },
+  );
+
+  return children.map((child: TreeChild) => {
+    // Convert TreeChild.versions to Version[]
+    const versions = child.versions?.map((version: TreeChild) => {
+      // Convert TreeChild versionInfo to VersionInfo format
+      const versionInfo = version.versionInfo
+        ? {
+            providers:
+              version.versionInfo.providers?.map((p) => ({
+                tag: p.code,
+                name: p.name,
+                color: p.color,
+              })) || [],
+            dubLanguages:
+              version.versionInfo.audio?.map((a) => ({
+                code: a.code,
+                language: a.full || a.type,
+              })) || [],
+            subLanguages:
+              version.versionInfo.subtitles?.map((s) => ({
+                code: s.code,
+                language: s.full || s.type,
+              })) || [],
+            audio: version.versionInfo.audio?.map((a) => ({
+              code: a.code,
+              language: a.full || a.type,
+              full: a.full,
+            })),
+            subtitles: version.versionInfo.subtitles?.map((s) => ({
+              code: s.code,
+              language: s.full || s.type,
+              full: s.full,
+            })),
+            quality: version.versionInfo.quality,
+            season: version.versionInfo.season,
+            special: version.versionInfo.special,
+          }
+        : undefined;
+
+      return {
+        name: version.name,
+        path: version.path,
+        versionDescription: versionInfo,
+        simpleVersionDescription: version.versionDescription,
+        versionInfo: versionInfo,
+      };
+    });
+
+    return {
+      name: child.name,
+      path: child.path,
+      isDir: child.isDir,
+      animeMetadata: child.animeMetadata,
+      versionCount: child.versionCount,
+      isGrouped: child.isGrouped,
+      isSingleVersion: child.isSingleVersion,
+      versions: versions,
+      type: 2, // Directory type
+      size: child.size,
+      modifiedTime: child.modifiedTime,
+      isProcessing: child.isProcessing,
+      metadataFailed: child.metadataFailed,
+      isRateLimited: child.isRateLimited,
+      searchTitle: child.searchTitle,
+    };
+  });
+});
+
 // Plugin component integration
 const usingPluginComponent = ref(false);
 const activePluginComponent = ref<any>(null);
@@ -672,6 +758,47 @@ const activePluginComponent = ref<any>(null);
 // Handle plugin component item clicks
 function handlePluginItemClick(item: any) {
   handleItemClick(item);
+}
+
+// Handle metadata updates from plugin
+function handleMetadataUpdate(data: any) {
+  console.log("🎯 FtpViewer: metadata update received:", data);
+
+  // If this is a full directory refresh from AnimeSeasonViewer
+  if (data && Array.isArray(data) && data.length > 0) {
+    console.log(
+      "🔄 FtpViewer: Updating children with new metadata from AnimeSeasonViewer",
+    );
+
+    // Process the data as an enhanced directory listing
+    processEnhancedDirectoryListing(current.value.path, data);
+  } else if (data && data.updates && Array.isArray(data.updates)) {
+    // Process individual metadata updates
+    console.log(
+      "🔄 FtpViewer: Processing individual metadata updates",
+      data.updates.length,
+    );
+
+    for (const update of data.updates) {
+      const matchingChildren =
+        current.value.children?.filter(
+          (c: any) =>
+            c.searchTitle === update.searchTitle || c.name === update.name,
+        ) || [];
+
+      for (const child of matchingChildren) {
+        child.animeMetadata = update.metadata;
+        child.isProcessing = false;
+
+        if (child.isGrouped && child.versions) {
+          for (const version of child.versions) {
+            version.animeMetadata = update.metadata;
+            version.isProcessing = false;
+          }
+        }
+      }
+    }
+  }
 }
 
 // Handle version selection save event from AnimeSeasonViewer

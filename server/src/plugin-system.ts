@@ -57,7 +57,11 @@ export async function initPluginSystem(applicationState: ApplicationState) {
         folder !== ".git" &&
         folder !== "Thumbs.db" &&
         folder !== "desktop.ini" &&
-        folder !== "._.DS_Store",
+        folder !== "._.DS_Store" &&
+        folder !== "package.json" &&
+        folder !== "package-lock.json" &&
+        folder !== "yarn.lock" &&
+        folder !== "pnpm-lock.yaml",
     );
 
     if (pluginFolders.length > 0) {
