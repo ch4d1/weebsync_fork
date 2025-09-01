@@ -50,10 +50,11 @@ FROM base AS prod-deps
 COPY package.json yarn.lock ./
 COPY server/package.json ./server/
 
-# Install only production dependencies for server with cache mount
+# Install production dependencies for server and root
 RUN --mount=type=cache,target=/root/.yarn \
   --mount=type=cache,target=/root/.cache \
-  yarn install --frozen-lockfile --production --ignore-workspaces --cwd server
+  yarn install --frozen-lockfile --production --ignore-workspaces --cwd server && \
+  yarn install --frozen-lockfile --production
 
 # --- Runtime Stage ---
 FROM node:${NODE_VERSION} AS runtime
@@ -75,15 +76,25 @@ WORKDIR /app
 # Copy built application directly to root (not in build subdirectory)
 COPY --from=build --chown=nodejs:nodejs /app/build .
 
-# Copy production dependencies
+# Copy production dependencies (both server and root dependencies for plugins)
 COPY --from=prod-deps --chown=nodejs:nodejs /app/server/node_modules ./node_modules
+COPY --from=prod-deps --chown=nodejs:nodejs /app/node_modules ./root_node_modules
 
-# Create config directory with proper permissions
-RUN mkdir -p /app/config && chown -R nodejs:nodejs /app/config
+# Copy plugins directly into the image
+COPY --chown=nodejs:nodejs plugins ./plugins
+
+# Install axios in plugins directory for ES module compatibility and create config directory
+WORKDIR /app/plugins
+RUN npm init -y && npm install axios@1.7.9 && \
+  mkdir -p /app/config && chown -R nodejs:nodejs /app/config
+
+# Switch back to app directory
+WORKDIR /app
 
 # Set production environment
 ENV NODE_ENV=production
 ENV WEEB_SYNC_SERVER_HTTP_PORT=42380
+ENV NODE_PATH=/app/plugins/node_modules:/app/root_node_modules:/app/node_modules
 
 # Add metadata labels
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \

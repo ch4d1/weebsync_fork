@@ -1,4 +1,4 @@
-// Import axios for HTTP requests (already in WeebSync dependencies)
+// Import axios for HTTP requests (globally installed in Node.js)
 import axios from 'axios';
 
 export class AniListClient {
