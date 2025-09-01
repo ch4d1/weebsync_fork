@@ -79,6 +79,7 @@ temp/
 # Runtime configuration
 weebsync.config.json
 *-config.json
+*-cache.json
 
 #Plugins
 plugins/plexanisync/error.log

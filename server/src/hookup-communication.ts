@@ -1,9 +1,15 @@
-import { abortSync, syncFiles, pauseSync, resumeSync } from "./sync";
+import { abortSync, syncFiles } from "./sync";
 import { saveConfig } from "./config";
 import { ApplicationState } from "./index";
-import { checkDir, listDir, getRegexDebugInfo } from "./actions";
+import {
+  checkDir,
+  listDir,
+  getRegexDebugInfo,
+  listLocalDir,
+  checkLocalDir,
+} from "./actions";
 import { pluginApis, savePluginConfiguration } from "./plugin-system";
-import type { PluginConfig } from "./types";
+import { PluginConfig } from "./types";
 import {
   validateConfig,
   validatePath,
@@ -31,15 +37,14 @@ export function hookupCommunicationEvents(
 ): void {
   applicationState.communication.connect.sub((socket) => {
     socket?.on("getPlugins", (cb) => {
-      cb(
-        applicationState.plugins.map((p) => ({
-          name: p.name,
-          config: p.config,
-          pluginConfigurationDefinition: p.pluginConfigurationDefinition,
-          version: p.version,
-          description: p.description,
-        })),
-      );
+      const pluginsData = applicationState.plugins.map((p) => ({
+        name: p.name,
+        config: p.config,
+        pluginConfigurationDefinition: p.pluginConfigurationDefinition,
+        version: p.version,
+        description: p.description,
+      }));
+      cb(pluginsData);
     });
     socket?.on(
       "sendPluginConfig",
@@ -70,9 +75,6 @@ export function hookupCommunicationEvents(
     socket?.on("getSyncStatus", (cb) => {
       cb(applicationState.syncInProgress);
     });
-    socket?.on("getSyncPauseStatus", (cb) => {
-      cb(applicationState.syncPaused);
-    });
     socket?.on("getLatestVersion", async (cb) => {
       try {
         const res = await fetch(
@@ -95,11 +97,8 @@ export function hookupCommunicationEvents(
         syncFiles(applicationState);
       }
     });
-    socket?.on("pauseSync", () => {
-      pauseSync(applicationState);
-    });
-    socket?.on("resumeSync", () => {
-      resumeSync(applicationState);
+    socket?.on("stopSync", () => {
+      abortSync();
     });
     socket?.on("config", async (config: unknown) => {
       // Validate configuration input
@@ -113,30 +112,28 @@ export function hookupCommunicationEvents(
 
       const validatedConfig = validation.value!;
 
-      // If sync is in progress, stop it first
+      // If sync is in progress, stop it first (but don't restart automatically)
       if (applicationState.syncInProgress) {
         applicationState.communication.logInfo(
-          "Config changed during sync. Stopping current sync and will restart.",
+          "Config changed during sync. Stopping current sync.",
         );
         abortSync();
         // Wait a moment for abort to complete
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
-      // Save the new config
-      saveConfig(
-        validatedConfig,
-        applicationState.communication,
-        applicationState,
+      // Save the new config (without triggering applyConfigUpdate to prevent file watcher loop)
+      saveConfig(validatedConfig, applicationState.communication);
+
+      // Apply config changes manually without file watcher triggering
+      applicationState.config = validatedConfig;
+      applicationState.communication.sendConfig(
+        JSON.parse(JSON.stringify(validatedConfig)),
       );
 
-      // If auto-sync was running, restart it
-      if (applicationState.autoSyncIntervalHandler) {
-        applicationState.communication.logInfo(
-          "Restarting sync with new configuration.",
-        );
-        setTimeout(() => syncFiles(applicationState), 500);
-      }
+      applicationState.communication.logInfo(
+        "Configuration saved successfully.",
+      );
     });
     socket?.on("getConfig", (cb) => {
       cb(applicationState.config);
@@ -170,35 +167,83 @@ export function hookupCommunicationEvents(
         cb(await checkDir(pathValidation.value!, applicationState));
       }
     });
-    socket?.on("getRegexDebugInfo", async (input: unknown, cb: any) => {
-      const validation = validateRegexDebugInput(input);
-      if (!validation.isValid) {
-        applicationState.communication.logError(
-          `Invalid regex debug input: ${validation.error}`,
-        );
-        if (cb) cb({ error: validation.error });
-        return;
-      }
-
-      const { originFolder, fileRegex, fileRenameTemplate, syncName } =
-        validation.value!;
-
-      try {
-        const result = await getRegexDebugInfo(
+    socket?.on(
+      "getRegexDebugInfo",
+      async (
+        originFolder: unknown,
+        fileRegex: unknown,
+        fileRenameTemplate: unknown,
+        syncName: unknown,
+        cb: any,
+      ) => {
+        // Create input object from individual parameters
+        const input = {
           originFolder,
           fileRegex,
           fileRenameTemplate,
           syncName,
-          applicationState,
-        );
-        if (cb) cb(result);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
+        };
+
+        const validation = validateRegexDebugInput(input);
+        if (!validation.isValid) {
+          applicationState.communication.logError(
+            `Invalid regex debug input: ${validation.error}`,
+          );
+          if (typeof cb === "function") cb({ error: validation.error });
+          return;
+        }
+
+        const {
+          originFolder: validOriginFolder,
+          fileRegex: validFileRegex,
+          fileRenameTemplate: validFileRenameTemplate,
+          syncName: validSyncName,
+        } = validation.value!;
+
+        try {
+          const result = await getRegexDebugInfo(
+            validOriginFolder,
+            validFileRegex,
+            validFileRenameTemplate,
+            validSyncName,
+            applicationState,
+          );
+          if (typeof cb === "function") cb(result);
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          applicationState.communication.logError(
+            `Regex debug error: ${errorMessage}`,
+          );
+          if (typeof cb === "function") cb({ error: errorMessage });
+        }
+      },
+    );
+
+    socket?.on("listLocalDir", async (path: unknown, cb: any) => {
+      const pathValidation = validatePath(path);
+      if (pathValidation.error) {
         applicationState.communication.logError(
-          `Regex debug error: ${errorMessage}`,
+          `Invalid path for listLocalDir: ${pathValidation.error}`,
         );
-        if (cb) cb({ error: errorMessage });
+        return;
+      }
+
+      const info = await listLocalDir(pathValidation.value!);
+      if (cb) cb(pathValidation.value, info);
+    });
+
+    socket?.on("checkLocalDir", async (path: unknown, cb: any) => {
+      const pathValidation = validatePath(path);
+      if (pathValidation.error) {
+        applicationState.communication.logError(
+          `Invalid path for checkLocalDir: ${pathValidation.error}`,
+        );
+        return;
+      }
+
+      if (cb) {
+        cb(await checkLocalDir(pathValidation.value!));
       }
     });
   });

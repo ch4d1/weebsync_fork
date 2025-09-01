@@ -36,6 +36,14 @@ export class Communication {
     this.socket.emit("checkDir", path, cb);
   }
 
+  listLocalDir(path: string, cb: (path: string, result: FileInfo[]) => void) {
+    this.socket.emit("listLocalDir", path, cb);
+  }
+
+  checkLocalDir(path: string, cb: (exists: boolean) => void) {
+    this.socket.emit("checkLocalDir", path, cb);
+  }
+
   config(config: Config) {
     this.socket.emit("config", config);
   }
@@ -59,20 +67,12 @@ export class Communication {
     this.socket.emit("getSyncStatus", cb);
   }
 
-  getSyncPauseStatus(cb: (syncPaused: boolean) => void) {
-    this.socket.emit("getSyncPauseStatus", cb);
-  }
-
   sync() {
     this.socket.emit("sync");
   }
 
-  pauseSync() {
-    this.socket.emit("pauseSync");
-  }
-
-  resumeSync() {
-    this.socket.emit("resumeSync");
+  stopSync() {
+    this.socket.emit("stopSync");
   }
 
   getRegexDebugInfo(

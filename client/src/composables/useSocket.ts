@@ -8,15 +8,12 @@ export interface UseSocketReturn {
   logs: Ref<Log[]>;
   config: Ref<Config | null>;
   syncInProgress: Ref<boolean>;
-  syncPaused: Ref<boolean>;
   currentVersion: Ref<string>;
   latestVersion: Ref<string>;
   autoSyncTimer: Ref<string | null>;
   connect: () => void;
   disconnect: () => void;
   sync: () => void;
-  pauseSync: () => void;
-  resumeSync: () => void;
   saveConfig: (config: Config) => void;
 }
 
@@ -26,7 +23,6 @@ export function useSocket(): UseSocketReturn {
   const logs = ref<Log[]>([]);
   const config = ref<Config | null>(null);
   const syncInProgress = ref(false);
-  const syncPaused = ref(false);
   const currentVersion = ref("LOADING");
   const latestVersion = ref("LOADING");
   const autoSyncTimer = ref<string | null>(null);
@@ -35,7 +31,7 @@ export function useSocket(): UseSocketReturn {
     if (socket.value?.connected) return;
 
     const socketUrl = import.meta.env.DEV
-      ? "ws://localhost:42380"
+      ? "ws://weebsync-server:42380"
       : window.location.origin;
 
     socket.value = io(socketUrl, {
@@ -80,10 +76,6 @@ export function useSocket(): UseSocketReturn {
       syncInProgress.value = status;
     });
 
-    socket.value.on("syncPauseStatus", (status: boolean) => {
-      syncPaused.value = status;
-    });
-
     socket.value.on("autoSyncTimer", (timer: string | null) => {
       autoSyncTimer.value = timer;
     });
@@ -104,10 +96,6 @@ export function useSocket(): UseSocketReturn {
       syncInProgress.value = status;
     });
 
-    socket.value.emit("getSyncPauseStatus", (status: boolean) => {
-      syncPaused.value = status;
-    });
-
     socket.value.emit("getVersion", (version: string) => {
       currentVersion.value = version;
     });
@@ -119,14 +107,6 @@ export function useSocket(): UseSocketReturn {
 
   const sync = () => {
     socket.value?.emit("sync");
-  };
-
-  const pauseSync = () => {
-    socket.value?.emit("pauseSync");
-  };
-
-  const resumeSync = () => {
-    socket.value?.emit("resumeSync");
   };
 
   const saveConfig = (newConfig: Config) => {
@@ -147,15 +127,12 @@ export function useSocket(): UseSocketReturn {
     logs,
     config,
     syncInProgress,
-    syncPaused,
     currentVersion,
     latestVersion,
     autoSyncTimer,
     connect,
     disconnect,
     sync,
-    pauseSync,
-    resumeSync,
     saveConfig,
   };
 }

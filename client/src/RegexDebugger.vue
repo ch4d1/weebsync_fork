@@ -221,7 +221,7 @@ watch(
   () => {
     fetchDebugInfo();
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 );
 </script>
 

@@ -14,7 +14,6 @@ export function createDefaultConfig(): Config {
     autoSyncIntervalInMinutes: 30,
     debugFileNames: false,
     startAsTray: false,
-    downloadSpeedLimitMbps: 0,
     server: {
       host: "",
       password: "",
@@ -32,7 +31,6 @@ export const useUiStore = defineStore("uiStore", () => {
   let config = ref(createDefaultConfig());
   const configLoaded = ref(false);
   const isSyncing = ref(false);
-  const isSyncPaused = ref(false);
   const currentVersion = ref("LOADING");
   const latestVersion = ref("LOADING");
   const plugins = reactive<WeebsyncPluginBaseInfo[]>([]);
@@ -69,10 +67,6 @@ export const useUiStore = defineStore("uiStore", () => {
     isSyncing.value = syncStatusFromServer;
   });
 
-  communication.getSyncPauseStatus((syncPauseStatusFromServer) => {
-    isSyncPaused.value = syncPauseStatusFromServer;
-  });
-
   communication.socket.on("log", (log) => {
     logs.push(log);
   });
@@ -89,10 +83,6 @@ export const useUiStore = defineStore("uiStore", () => {
     isSyncing.value = isSyncingStatus;
   });
 
-  communication.socket.on("syncPauseStatus", (isSyncPausedStatus) => {
-    isSyncPaused.value = isSyncPausedStatus;
-  });
-
   communication.socket.on("autoSyncTimer", (timeRemaining) => {
     autoSyncTimeRemaining.value = timeRemaining;
   });
@@ -102,7 +92,6 @@ export const useUiStore = defineStore("uiStore", () => {
     configLoaded,
     logs,
     isSyncing,
-    isSyncPaused,
     currentVersion,
     latestVersion,
     bottomBar,

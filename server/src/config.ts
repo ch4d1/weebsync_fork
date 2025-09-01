@@ -21,19 +21,8 @@ export const CONFIG_FILE_PATH = `${CONFIG_FILE_DIR}/${CONFIG_NAME}`;
 
 export function watchConfigChanges(applicationState: ApplicationState): void {
   const configWatcher = chokidar.watch(CONFIG_FILE_PATH);
-  let lastProgrammaticSave = 0;
-
-  // Store reference to track programmatic saves
-  applicationState.markProgrammaticConfigSave = () => {
-    lastProgrammaticSave = Date.now();
-  };
 
   configWatcher.on("change", async (oath) => {
-    // Skip if this change was from a recent programmatic save
-    if (Date.now() - lastProgrammaticSave < 1000) {
-      return;
-    }
-
     if (applicationState.configUpdateInProgress) {
       return;
     }
@@ -43,7 +32,7 @@ export function watchConfigChanges(applicationState: ApplicationState): void {
     );
     applicationState.configUpdateInProgress = true;
 
-    if (applicationState.syncInProgress && !applicationState.syncPaused) {
+    if (applicationState.syncInProgress) {
       applicationState.communication.logInfo(
         "Sync is in progress, won't update configuration now.",
       );
@@ -74,7 +63,6 @@ export function createDefaultConfig(): Config {
       password: "",
       port: 21,
       user: "",
-      allowSelfSignedCert: false,
     },
     syncMaps: [],
   };
@@ -222,15 +210,29 @@ async function getConfig(): Promise<GetConfigResult> {
       };
     }
 
+    // Apply migrations BEFORE validation
+    const { migrateConfig } = await import("./config-migration");
+    const migratedConfig = migrateConfig(config);
+
+    // Check if migration changed the config
+    const configChanged =
+      JSON.stringify(config) !== JSON.stringify(migratedConfig);
+
     // Validate config structure and content
     const { validateConfig } = await import("./validation");
-    const validation = validateConfig(config);
+    const validation = validateConfig(migratedConfig);
 
     if (!validation.isValid) {
       return {
         type: "WrongConfigError",
         message: validation.error || "Configuration validation failed",
       };
+    }
+
+    // Only save migrated config back to file during initial load (not during watching)
+    // This prevents infinite loops with the file watcher
+    if (configChanged) {
+      console.log("Config file updated with migrated values");
     }
 
     return {

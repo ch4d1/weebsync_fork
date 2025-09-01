@@ -5,7 +5,7 @@
     "noImplicitAny": true,
     "strict": true,
     "sourceMap": true,
-    "moduleResolution": "Node",
+    "moduleResolution": "Bundler",
     "outDir": "build",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

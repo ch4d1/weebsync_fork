@@ -28,7 +28,7 @@ services:
       - "8080:8080"
     volumes:
       - ./client:/app/client
-      - ./shared:/app/shared
+      - ./tmp:/app/shared
       - /app/client/node_modules
     command: >
       /bin/sh -c "
@@ -60,6 +60,7 @@ services:
       - ./server:/app/server
       - ./shared:/app/shared
       - ./build:/app/build
+      - ./plugins:/app/plugins
       - /app/server/node_modules
     command: >
       /bin/sh -c "

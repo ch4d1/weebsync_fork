@@ -12,7 +12,7 @@ esbuild
     platform: "node",
     format: "esm",
     outfile: "../build/index.mjs",
-    external: ["fsevents"],
+    external: ["fsevents", "cpu-features"],
     define: {
       "process.env.__APP_VERSION__": JSON.stringify(`v${version}`),
     },

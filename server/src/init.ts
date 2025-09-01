@@ -29,6 +29,10 @@ export async function init(server: FastifyInstance) {
   watchConfigChanges(applicationState);
 
   hookupCommunicationEvents(applicationState);
+
+  // Initialize plugins before sync so they can hook into sync events
+  await initPluginSystem(applicationState);
+
   if (applicationState.config.syncOnStart) {
     try {
       await syncFiles(applicationState);
@@ -36,7 +40,6 @@ export async function init(server: FastifyInstance) {
       server.log.error(e);
     }
   }
-  await initPluginSystem(applicationState);
 }
 
 export function cleanup(): void {
@@ -62,6 +65,5 @@ async function setupApplication(
     plugins: [],
     configUpdateInProgress: false,
     syncInProgress: false,
-    syncPaused: false,
   };
 }

@@ -8,7 +8,6 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { init, cleanup } from "./init";
 import { WeebsyncPlugin } from "./plugin-system";
-import { destroyFTPConnectionPool } from "./ftp";
 import { readFileSync } from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,13 +17,10 @@ export interface ApplicationState {
   config: Config;
   configUpdateInProgress: boolean;
   syncInProgress: boolean;
-  syncPaused: boolean;
   communication: Communication;
   plugins: WeebsyncPlugin[];
   autoSyncIntervalHandler?: NodeJS.Timeout;
-  autoSyncTimerBroadcastHandler?: NodeJS.Timeout;
-  lastSyncStartTime?: number;
-  markProgrammaticConfigSave?: () => void;
+  autoSyncTimerUpdateHandler?: NodeJS.Timeout;
 }
 
 const server = Fastify({
@@ -158,9 +154,7 @@ function gracefulShutdown(signal: string) {
     // Stop intervals and clean up application state
     cleanup();
 
-    // Clean up FTP connection pool
-    destroyFTPConnectionPool();
-    console.log("FTP connection pool cleaned up");
+    console.log("Cleanup completed");
 
     process.exit(0);
   });

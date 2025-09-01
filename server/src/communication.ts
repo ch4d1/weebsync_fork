@@ -43,12 +43,6 @@ export class Communication {
     }
   }
 
-  sendSyncPauseStatus(paused: boolean) {
-    if (this._socket) {
-      this._socket.emit("syncPauseStatus", paused);
-    }
-  }
-
   updateBottomBar(updateBottomBarEvent: BottomBarUpdateEvent) {
     if (this._socket) {
       this._socket.emit("updateBottomBar", updateBottomBarEvent);
@@ -58,6 +52,12 @@ export class Communication {
   sendConfig(config: Config) {
     if (this._socket) {
       this._socket.emit("config", config);
+    }
+  }
+
+  sendAutoSyncTimer(timeRemaining: string | null) {
+    if (this._socket) {
+      this._socket.emit("autoSyncTimer", timeRemaining);
     }
   }
 

@@ -16,7 +16,6 @@ export const serverConfigSchema = Joi.object({
   port: Joi.number().port().required(),
   user: Joi.string().min(1).max(100).required(),
   password: Joi.string().min(1).max(200).required(),
-  allowSelfSignedCert: Joi.boolean().default(false),
 });
 
 export const configSchema = Joi.object<Config>({
@@ -24,21 +23,6 @@ export const configSchema = Joi.object<Config>({
   syncMaps: Joi.array().items(syncMapSchema).min(0).max(50).default([]),
   autoSyncIntervalInMinutes: Joi.number().min(1).max(1440).default(30),
   syncOnStart: Joi.boolean().default(false),
-  downloadSpeedLimitMbps: Joi.alternatives()
-    .try(
-      Joi.number().min(0.1).max(1000),
-      Joi.string()
-        .pattern(/^\d+(\.\d+)?$/)
-        .custom((value) => {
-          const num = parseFloat(value);
-          if (num < 0.1 || num > 1000) {
-            throw new Error("Speed limit must be between 0.1 and 1000 Mbps");
-          }
-          return num;
-        }),
-    )
-    .allow(null)
-    .default(null),
 });
 
 // Socket event validation schemas

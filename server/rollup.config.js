@@ -10,6 +10,7 @@ export default {
     format: "cjs",
     name: "Weebsync",
   },
+  external: ["cpu-features"],
 
   plugins: [
     resolve({

@@ -1,5 +1,4 @@
 import fs, { Stats } from "fs";
-import { Transform } from "stream";
 import { getFTPClient, FTP } from "./ftp";
 import Handlebars from "handlebars";
 import ErrnoException = NodeJS.ErrnoException;
@@ -9,60 +8,14 @@ import { FileInfo } from "basic-ftp";
 import { ApplicationState } from "./index";
 import { Config, SyncMap } from "@shared/types";
 import { pluginApis } from "./plugin-system";
-import { EventEmitter } from "events";
-
-// SyncController for event-driven pause/resume
-class SyncController extends EventEmitter {
-  private _paused = false;
-
-  pause(): void {
-    this._paused = true;
-    this.emit("pause");
-  }
-
-  resume(): void {
-    this._paused = false;
-    this.emit("resume");
-  }
-
-  isPaused(): boolean {
-    return this._paused;
-  }
-
-  async waitForResume(): Promise<void> {
-    if (!this._paused) return;
-
-    return new Promise((resolve) => {
-      this.once("resume", resolve);
-    });
-  }
-}
-
-// Global sync controller instance
-const syncController = new SyncController();
 
 let currentWriteStream: fs.WriteStream | null = null;
-let currentTransformStream: Transform | null = null;
 
 export type SyncResult =
   | { type: "FilesDownloaded" }
   | { type: "NoDownloadsDetected" }
   | { type: "Aborted" }
   | { type: "Error"; error: Error };
-
-interface RemoteFileMatching {
-  path: string;
-  listingElement: FileInfo;
-}
-
-interface FileMatchesMapEntry {
-  fileStatOnDisk: Stats | null;
-  remoteFilesMatching: RemoteFileMatching[];
-}
-
-interface FileMatchesMap {
-  [localFile: string]: FileMatchesMapEntry;
-}
 
 export async function syncFiles(
   applicationState: ApplicationState,
@@ -75,11 +28,6 @@ export async function syncFiles(
   }
 
   updateSyncStatus(applicationState, true);
-  updateSyncPauseStatus(applicationState, false);
-
-  // Track when sync started for auto-sync timer
-  applicationState.lastSyncStartTime = Date.now();
-
   const ftpClient = match(
     await getFTPClient(applicationState.config, applicationState.communication),
   )
@@ -99,9 +47,13 @@ export async function syncFiles(
 
   applicationState.communication.logInfo(`Attempting to sync.`);
   let filesDownloaded = false;
-
   for (const syncMap of applicationState.config.syncMaps) {
-    const syncResult = await sync(syncMap, ftpClient, applicationState);
+    const syncResult = await sync(
+      syncMap,
+      ftpClient,
+      applicationState.config,
+      applicationState.communication,
+    );
     const abortSync = match(syncResult)
       .with({ type: "FilesDownloaded" }, () => {
         filesDownloaded = true;
@@ -115,11 +67,8 @@ export async function syncFiles(
       break;
     }
   }
-
   updateSyncStatus(applicationState, false);
-  updateSyncPauseStatus(applicationState, false);
   applicationState.communication.logInfo(`Sync done!`);
-
   if (filesDownloaded) {
     for (const plugin of applicationState.plugins) {
       if (plugin.onFilesDownloadSuccess) {
@@ -139,27 +88,19 @@ function updateSyncStatus(applicationState: ApplicationState, status: boolean) {
   applicationState.communication.sendSyncStatus(status);
 }
 
-function updateSyncPauseStatus(
-  applicationState: ApplicationState,
-  paused: boolean,
-) {
-  applicationState.syncPaused = paused;
-  applicationState.communication.sendSyncPauseStatus(paused);
-}
-
 export function toggleAutoSync(
   applicationState: ApplicationState,
   enabled: boolean,
 ): void {
-  // Cleanup existing intervals with proper error handling
   if (applicationState.autoSyncIntervalHandler) {
     clearInterval(applicationState.autoSyncIntervalHandler);
-    applicationState.autoSyncIntervalHandler = undefined;
+    delete applicationState.autoSyncIntervalHandler;
   }
 
-  if (applicationState.autoSyncTimerBroadcastHandler) {
-    clearInterval(applicationState.autoSyncTimerBroadcastHandler);
-    applicationState.autoSyncTimerBroadcastHandler = undefined;
+  // Clear any existing timer update interval
+  if (applicationState.autoSyncTimerUpdateHandler) {
+    clearInterval(applicationState.autoSyncTimerUpdateHandler);
+    delete applicationState.autoSyncTimerUpdateHandler;
   }
 
   if (enabled) {
@@ -174,105 +115,62 @@ export function toggleAutoSync(
       `AutoSync enabled! Interval is ${interval} minutes.`,
     );
 
+    let nextSyncTime = Date.now() + interval * 60 * 1000;
+
     applicationState.autoSyncIntervalHandler = setInterval(
       () => {
-        // Add error handling to prevent crashes
-        syncFiles(applicationState).catch((error) => {
-          applicationState.communication.logError(
-            `Auto-sync failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-          );
-        });
+        syncFiles(applicationState);
+        nextSyncTime = Date.now() + interval * 60 * 1000;
       },
       interval * 60 * 1000,
     );
 
-    // Start timer broadcast - update every second
-    startAutoSyncTimerBroadcast(applicationState, interval);
+    // Update timer display every second
+    applicationState.autoSyncTimerUpdateHandler = setInterval(() => {
+      const timeRemaining = nextSyncTime - Date.now();
+      if (timeRemaining > 0) {
+        const minutes = Math.floor(timeRemaining / (60 * 1000));
+        const seconds = Math.floor((timeRemaining % (60 * 1000)) / 1000);
+        const timeString = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+        applicationState.communication.sendAutoSyncTimer(timeString);
+      }
+    }, 1000);
   } else {
     applicationState.communication.logInfo("AutoSync disabled!");
-    // Broadcast that auto-sync is disabled
-    applicationState.communication.io.emit("autoSyncTimer", null);
+    applicationState.communication.sendAutoSyncTimer(null);
   }
 }
 
-function startAutoSyncTimerBroadcast(
-  applicationState: ApplicationState,
-  intervalMinutes: number,
-): void {
-  const intervalMs = intervalMinutes * 60 * 1000;
-
-  applicationState.autoSyncTimerBroadcastHandler = setInterval(() => {
-    if (applicationState.syncInProgress) {
-      // Don't show timer during sync
-      applicationState.communication.io.emit("autoSyncTimer", null);
-      return;
-    }
-
-    const now = Date.now();
-    const lastSync = applicationState.lastSyncStartTime || now;
-    const timeSinceLastSync = now - lastSync;
-    const timeUntilNext = intervalMs - timeSinceLastSync;
-
-    if (timeUntilNext <= 0) {
-      applicationState.communication.io.emit("autoSyncTimer", "Now");
-    } else {
-      const minutesRemaining = Math.floor(timeUntilNext / (60 * 1000));
-      const secondsRemaining = Math.floor((timeUntilNext % (60 * 1000)) / 1000);
-
-      const timeString =
-        minutesRemaining > 0
-          ? `${minutesRemaining}m ${secondsRemaining}s`
-          : `${secondsRemaining}s`;
-
-      applicationState.communication.io.emit("autoSyncTimer", timeString);
-    }
-  }, 1000);
-}
-
-// Helper functions for file processing
-function processFileMatch(
-  listingElement: FileInfo,
-  syncMap: SyncMap,
-  config: Config,
-  communication: Communication,
-): { localFile: string; remoteFile: string } | null {
-  const renameTemplate = syncMap.rename
-    ? Handlebars.compile(syncMap.fileRenameTemplate)
-    : Handlebars.compile(listingElement.name);
-  const regex = syncMap.rename ? new RegExp(syncMap.fileRegex) : /.*/;
-  const match = regex.exec(listingElement.name);
-
-  if (match === null) {
-    if (config.debugFileNames) {
-      communication.logDebug(
-        `File did not match regex "${listingElement.name}". Not loading.`,
-      );
-    }
-    return null;
-  }
-
+function buildTemplateData(
+  match: RegExpExecArray,
+  syncMapId: string,
+): { [key: string]: string } {
   const templateData: { [key: string]: string } = {
-    $syncName: syncMap.id,
+    $syncName: syncMapId,
   };
   for (let i = 0; i < match.length; i++) {
     templateData["$" + i] = match[i];
   }
+  return templateData;
+}
 
+function processFileMatch(
+  listingElement: FileInfo,
+  syncMap: SyncMap,
+  match: RegExpExecArray,
+  fileMatchesMap: FileMatchesMap,
+): void {
+  const renameTemplate = syncMap.rename
+    ? Handlebars.compile(syncMap.fileRenameTemplate)
+    : Handlebars.compile(listingElement.name);
+
+  const templateData = buildTemplateData(match, syncMap.id);
   const newName = renameTemplate(templateData);
   const remoteFile = `${syncMap.originFolder}/${listingElement.name}`;
   const localFile = Handlebars.compile(
     `${syncMap.destinationFolder}/${newName}`,
   )(templateData);
 
-  return { localFile, remoteFile };
-}
-
-function addFileToMatchesMap(
-  fileMatchesMap: FileMatchesMap,
-  localFile: string,
-  remoteFile: string,
-  listingElement: FileInfo,
-): void {
   if (!fileMatchesMap[localFile]) {
     fileMatchesMap[localFile] = {
       fileStatOnDisk: null,
@@ -299,64 +197,49 @@ function getFileMatchesMap(
   const fileMatchesMap: FileMatchesMap = {};
 
   for (const listingElement of dir) {
-    const result = processFileMatch(
-      listingElement,
-      syncMap,
-      config,
-      communication,
-    );
-    if (result) {
-      addFileToMatchesMap(
-        fileMatchesMap,
-        result.localFile,
-        result.remoteFile,
-        listingElement,
-      );
+    const regex = syncMap.rename ? new RegExp(syncMap.fileRegex) : /no_rename/;
+    const match = syncMap.rename
+      ? regex.exec(listingElement.name)
+      : regex.exec("no_rename");
+
+    if (match === null) {
+      if (config.debugFileNames) {
+        communication.logDebug(
+          `File did not match regex "${listingElement.name}". Not loading.`,
+        );
+      }
+      continue;
     }
+
+    processFileMatch(listingElement, syncMap, match, fileMatchesMap);
   }
 
   return fileMatchesMap;
 }
 
-// Helper functions for sync process
-async function waitForResumeIfPaused(
-  applicationState: ApplicationState,
-): Promise<void> {
-  // Sync global sync controller with application state
-  if (applicationState.syncPaused && !syncController.isPaused()) {
-    syncController.pause();
-  } else if (!applicationState.syncPaused && syncController.isPaused()) {
-    syncController.resume();
+export function abortSync(): void {
+  if (currentWriteStream) {
+    currentWriteStream.destroy(new Error("Manual abortion."));
   }
-
-  // Use event-driven approach instead of polling
-  await syncController.waitForResume();
 }
 
-function shouldSkipFile(
+function shouldDownloadFile(
   fileMatches: FileMatchesMapEntry,
   latestRemoteMatch: RemoteFileMatching,
 ): boolean {
-  return Boolean(
-    fileMatches.fileStatOnDisk &&
-      fileMatches.fileStatOnDisk.size === latestRemoteMatch.listingElement.size,
+  if (!fileMatches.fileStatOnDisk) {
+    return true;
+  }
+  return (
+    fileMatches.fileStatOnDisk.size !== latestRemoteMatch.listingElement.size
   );
 }
 
-function logFileAction(
+function logFileDownloadReason(
   fileMatches: FileMatchesMapEntry,
   localFile: string,
-  latestRemoteMatch: RemoteFileMatching,
-  syncMap: SyncMap,
-  config: Config,
   communication: Communication,
 ): void {
-  if (config.debugFileNames && syncMap.rename) {
-    communication.logDebug(
-      `Renaming ${latestRemoteMatch.path} -> ${localFile}`,
-    );
-  }
-
   if (fileMatches.fileStatOnDisk) {
     communication.logWarning(
       `New version or damaged file detected, reloading ${localFile}`,
@@ -366,76 +249,35 @@ function logFileAction(
   }
 }
 
-async function downloadFile(
-  ftpClient: FTP,
-  latestRemoteMatch: RemoteFileMatching,
-  localFile: string,
-  config: Config,
-  applicationState: ApplicationState,
-  _syncMapId: string,
-): Promise<void> {
-  currentWriteStream = fs.createWriteStream(localFile);
-
-  // Add error handler to prevent unhandled errors
-  currentWriteStream.on("error", (error) => {
-    if (error.message === "Manual abortion.") {
-      // This is expected when aborting, don't log as error
-      applicationState.communication.logInfo("Download aborted by user.");
-    } else {
-      applicationState.communication.logError(
-        `Download error: ${error.message}`,
-      );
-    }
-  });
-
-  try {
-    currentTransformStream = await ftpClient.getFile(
-      latestRemoteMatch.path,
-      currentWriteStream,
-      latestRemoteMatch.listingElement.size,
-      config,
-      applicationState,
-    );
-  } finally {
-    // Reset the streams after download completion or error
-    currentWriteStream = null;
-    currentTransformStream = null;
-  }
-}
-
-async function processFileDownloads(
+async function downloadMatchedFiles(
   fileMatchesMap: FileMatchesMap,
-  syncMap: SyncMap,
   ftpClient: FTP,
-  applicationState: ApplicationState,
+  config: Config,
+  syncMap: SyncMap,
+  communication: Communication,
 ): Promise<number> {
-  const { config, communication } = applicationState;
   let filesDownloaded = 0;
 
   for (const [localFile, fileMatches] of Object.entries(fileMatchesMap)) {
-    await waitForResumeIfPaused(applicationState);
-
     const latestRemoteMatch = getLatestMatchingFile(fileMatches);
 
-    if (shouldSkipFile(fileMatches, latestRemoteMatch)) {
+    if (config.debugFileNames && syncMap.rename) {
+      communication.logDebug(
+        `Renaming ${latestRemoteMatch.path} -> ${localFile}`,
+      );
+    }
+
+    if (!shouldDownloadFile(fileMatches, latestRemoteMatch)) {
       continue;
     }
 
-    logFileAction(
-      fileMatches,
-      localFile,
-      latestRemoteMatch,
-      syncMap,
-      config,
-      communication,
-    );
-    await downloadFile(
-      ftpClient,
-      latestRemoteMatch,
-      localFile,
-      config,
-      applicationState,
-      syncMap.id,
+    logFileDownloadReason(fileMatches, localFile, communication);
+
+    currentWriteStream = fs.createWriteStream(localFile);
+    await ftpClient.getFile(
+      latestRemoteMatch.path,
+      currentWriteStream,
+      latestRemoteMatch.listingElement.size,
     );
     filesDownloaded++;
   }
@@ -444,51 +286,46 @@ async function processFileDownloads(
 }
 
 function handleSyncError(
-  error: unknown,
+  e: unknown,
   syncMap: SyncMap,
   communication: Communication,
 ): SyncResult {
-  if (!(error instanceof Error)) {
-    const errorMessage =
-      typeof error === "object" && error !== null
-        ? JSON.stringify(error)
-        : "Unknown error";
-    communication.logError(`Unknown error: ${errorMessage}`);
-    return { type: "Error", error: new Error(errorMessage) };
-  }
-
-  if ("code" in error) {
-    const codeError = error as { code: number };
-    if (codeError.code === 550) {
-      communication.logError(
-        `Directory "${syncMap.originFolder}" does not exist on remote.`,
+  if (e instanceof Error) {
+    if ("code" in e) {
+      const error = e as { code: number };
+      if (error.code === 550) {
+        communication.logError(
+          `Directory "${syncMap.originFolder}" does not exist on remote.`,
+        );
+      }
+      return { type: "Error", error: e };
+    } else if (e.message === "Manual abortion.") {
+      communication.logWarning(
+        `Sync was manually stopped. File will be downloaded again.`,
       );
+      return { type: "Aborted" };
+    } else {
+      communication.logError(`Unknown error ${e.message}`);
+      return { type: "Error", error: e };
     }
-    return { type: "Error", error };
   }
 
-  if (error.message === "Manual abortion.") {
-    communication.logWarning(
-      `Sync was manually stopped. File will be downloaded again.`,
-    );
-    return { type: "Aborted" };
-  }
-
-  communication.logError(`Unknown error ${error.message}`);
-  return { type: "Error", error };
+  communication.logError(`Unknown error ${e}`);
+  return {
+    type: "Error",
+    error: e instanceof Error ? e : new Error(String(e)),
+  };
 }
 
-// Main sync function - now with reduced complexity
 async function sync(
   syncMap: SyncMap,
   ftpClient: FTP,
-  applicationState: ApplicationState,
+  config: Config,
+  communication: Communication,
 ): Promise<SyncResult> {
-  const { config, communication } = applicationState;
   const localFolder = Handlebars.compile(syncMap.destinationFolder)({
     $syncName: syncMap.id,
   });
-
   if (!createLocalFolder(localFolder, communication).exists) {
     return {
       type: "Error",
@@ -516,48 +353,36 @@ async function sync(
       );
     }
 
-    const filesDownloaded = await processFileDownloads(
+    const filesDownloaded = await downloadMatchedFiles(
       fileMatchesMap,
-      syncMap,
       ftpClient,
-      applicationState,
+      config,
+      syncMap,
+      communication,
     );
 
     return filesDownloaded > 0
       ? { type: "FilesDownloaded" }
       : { type: "NoDownloadsDetected" };
-  } catch (error) {
-    return handleSyncError(error, syncMap, communication);
+  } catch (e) {
+    return handleSyncError(e, syncMap, communication);
   }
 }
 
-// Export functions
-export function abortSync(): void {
-  if (currentTransformStream) {
-    currentTransformStream.destroy(new Error("Manual abortion."));
-  }
-  if (currentWriteStream) {
-    currentWriteStream.destroy(new Error("Manual abortion."));
-  }
+interface RemoteFileMatching {
+  path: string;
+  listingElement: FileInfo;
 }
 
-export function pauseSync(applicationState: ApplicationState): void {
-  if (applicationState.syncInProgress && !applicationState.syncPaused) {
-    updateSyncPauseStatus(applicationState, true);
-    syncController.pause(); // Update event-driven controller
-    applicationState.communication.logInfo("Sync paused.");
-  }
+interface FileMatchesMapEntry {
+  fileStatOnDisk: Stats | null;
+  remoteFilesMatching: RemoteFileMatching[];
 }
 
-export function resumeSync(applicationState: ApplicationState): void {
-  if (applicationState.syncInProgress && applicationState.syncPaused) {
-    updateSyncPauseStatus(applicationState, false);
-    syncController.resume(); // Update event-driven controller
-    applicationState.communication.logInfo("Sync resumed.");
-  }
+interface FileMatchesMap {
+  [localFile: string]: FileMatchesMapEntry;
 }
 
-// Utility functions
 function getLatestMatchingFile(
   fileMatches: FileMatchesMapEntry,
 ): RemoteFileMatching {

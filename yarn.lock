@@ -844,10 +844,31 @@
   dependencies:
     undici-types "~7.10.0"
 
+"@types/progress-stream@^2.0.5":
+  version "2.0.5"
+  resolved "https://registry.yarnpkg.com/@types/progress-stream/-/progress-stream-2.0.5.tgz#50f10be88b0717c8fce6573e7fcafa8eabbc3dcf"
+  integrity sha512-5YNriuEZkHlFHHepLIaxzq3atGeav1qCTGzB74HKWpo66qjfostF+rHc785YYYHeBytve8ZG3ejg42jEIfXNiQ==
+  dependencies:
+    "@types/node" "*"
+
 "@types/resolve@1.20.2":
   version "1.20.2"
   resolved "https://registry.npmjs.org/@types/resolve/-/resolve-1.20.2.tgz"
   integrity sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q==
+
+"@types/stream-throttle@^0.1.4":
+  version "0.1.4"
+  resolved "https://registry.yarnpkg.com/@types/stream-throttle/-/stream-throttle-0.1.4.tgz#b25f79a8cd4fb3782c31f0aaf2133f01572663d4"
+  integrity sha512-VxXIHGjVuK8tYsVm60rIQMmF/0xguCeen5OmK5S4Y6K64A+z+y4/GI6anRnVzaUZaJB9Ah9IfbDcO0o1gZCc/w==
+  dependencies:
+    "@types/node" "*"
+
+"@types/throttle@^1.0.4":
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/@types/throttle/-/throttle-1.0.4.tgz#f196173f6997fffa4cacca2247f9f9ee22c92918"
+  integrity sha512-WhENYQ1Hl8AKJ4EkJvh9mFVhhKYpF55goIyPYdUk+4r9oWffT57ujWJn9kTGjM21tT0Zzq9Vbc4D5LNPd+W9SA==
+  dependencies:
+    "@types/node" "*"
 
 "@types/yauzl@^2.9.1":
   version "2.10.3"
@@ -1560,7 +1581,7 @@ combined-stream@^1.0.8:
   dependencies:
     delayed-stream "~1.0.0"
 
-commander@^2.20.0, commander@^2.20.3:
+commander@^2.2.0, commander@^2.20.0, commander@^2.20.3:
   version "2.20.3"
   resolved "https://registry.npmjs.org/commander/-/commander-2.20.3.tgz"
   integrity sha512-GpVkmM8vF2vQUkj2LvZmD35JxeJOLCwJ9cUkugyk2nuhbv3+mJvpLYYt+0+USMxE+oj+ey/lJEnhZw75x/OMcQ==
@@ -2819,6 +2840,11 @@ lilconfig@^2.0.3:
   resolved "https://registry.npmjs.org/lilconfig/-/lilconfig-2.1.0.tgz"
   integrity sha512-utWOt/GHzuUxnLKxB6dk81RoOeoNeHgbrXiuGk4yyF5qlRz+iIVWu56E2fqGHFrXz0QNUhLB/8nKqvRH66JKGQ==
 
+limiter@^1.0.5:
+  version "1.1.5"
+  resolved "https://registry.yarnpkg.com/limiter/-/limiter-1.1.5.tgz#8f92a25b3b16c6131293a0cc834b4a838a2aa7c2"
+  integrity sha512-FWWMIEOxz3GwUI4Ts/IvgVy6LPvoMPgjMdQ185nN6psJyBJ4yOpzqm695/h5umdLJg2vW3GR5iG11MAkR2AzJA==
+
 linkify-html@^3.0.5:
   version "3.0.5"
   resolved "https://registry.npmjs.org/linkify-html/-/linkify-html-3.0.5.tgz"
@@ -3972,6 +3998,14 @@ stream-meter@^1.0.4:
   integrity sha512-4sOEtrbgFotXwnEuzzsQBYEV1elAeFSO8rSGeTwabuX1RRn/kEq9JVH7I0MRBhKVRR0sJkr0M0QCH7yOLf9fhQ==
   dependencies:
     readable-stream "^2.1.4"
+
+stream-throttle@^0.1.3:
+  version "0.1.3"
+  resolved "https://registry.yarnpkg.com/stream-throttle/-/stream-throttle-0.1.3.tgz#add57c8d7cc73a81630d31cd55d3961cfafba9c3"
+  integrity sha512-889+B9vN9dq7/vLbGyuHeZ6/ctf5sNuGWsDy89uNxkFTAgzy0eK7+w5fL3KLNRTkLle7EgZGvHUphZW0Q26MnQ==
+  dependencies:
+    commander "^2.2.0"
+    limiter "^1.0.5"
 
 "string-width-cjs@npm:string-width@^4.2.0":
   version "4.2.3"

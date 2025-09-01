@@ -1,5 +1,3 @@
-import { FileInfo as FileInformation } from "basic-ftp";
-
 export type Log = {
   date: string;
   content: string;
@@ -8,8 +6,10 @@ export type Log = {
 
 export interface PluginInputDefinition {
   key: string;
-  type: "number" | "text" | "boolean";
-  default: number | string | boolean;
+  type: "number" | "text" | "boolean" | "directory-picker" | "text-array";
+  default: number | string | boolean | string[];
+  placeholder?: string;
+  description?: string;
   enableWhen?: {
     key: string;
     is: number | string | boolean;
@@ -25,7 +25,7 @@ export interface WeebsyncPluginBaseInfo {
   name: string;
   version: string;
   description: string;
-  config: { [key: string]: number | boolean | string };
+  config: { [key: string]: number | boolean | string | string[] };
   pluginConfigurationDefinition: (PluginInputDefinition | PluginInputLabel)[];
 }
 
@@ -33,7 +33,6 @@ export interface ServerToClientEvents {
   log: (log: Log) => void;
   updateBottomBar: (content: BottomBarUpdateEvent) => void;
   syncStatus: (syncStatus: boolean) => void;
-  syncPauseStatus: (syncPaused: boolean) => void;
   config: (config: Config) => void;
   autoSyncTimer: (timeRemaining: string | null) => void;
 }
@@ -66,13 +65,16 @@ export interface ClientToServerEvents {
     cb: (path: string, result: FileInfo[]) => void,
   ) => void;
   checkDir: (path: string, cb: (exists: boolean) => void) => void;
+  listLocalDir: (
+    path: string,
+    cb: (path: string, result: FileInfo[]) => void,
+  ) => void;
+  checkLocalDir: (path: string, cb: (exists: boolean) => void) => void;
   config: (config: Config) => void;
   getConfig: (cb: (config: Config) => void) => void;
   getSyncStatus: (cb: (syncStatus: boolean) => void) => void;
-  getSyncPauseStatus: (cb: (syncPaused: boolean) => void) => void;
   sync: () => void;
-  pauseSync: () => void;
-  resumeSync: () => void;
+  stopSync: () => void;
   getRegexDebugInfo: (
     originFolder: string,
     fileRegex: string,
@@ -91,13 +93,11 @@ export interface Config {
   autoSyncIntervalInMinutes?: number;
   debugFileNames?: boolean;
   startAsTray?: boolean;
-  downloadSpeedLimitMbps?: number | string;
   server: {
     host: string;
     port: number;
     user: string;
     password: string;
-    allowSelfSignedCert?: boolean;
   };
   syncMaps: SyncMap[];
 }
@@ -111,7 +111,18 @@ export interface SyncMap {
   rename: boolean;
 }
 
-export type FileInfo = FileInformation;
+export interface FileInfo {
+  name: string;
+  path?: string;
+  size: number;
+  rawModifiedAt: string;
+  modifiedTime?: string;
+  isDirectory: boolean;
+  isSymbolicLink: boolean;
+  isFile: boolean;
+  date: string;
+  type: number;
+}
 
 export interface BottomBarUpdateEvent {
   fileProgress: string;

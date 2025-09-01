@@ -5,6 +5,7 @@ import {
   writeFileSync,
   createWriteStream,
   rmSync,
+  existsSync,
 } from "fs";
 import { ApplicationState } from "./index";
 import extract from "extract-zip";
@@ -13,34 +14,64 @@ import { Communication } from "./communication";
 import { WeebsyncPluginBaseInfo } from "@shared/types";
 import { CONFIG_FILE_DIR } from "./config";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, join, resolve } from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export const PATH_TO_EXECUTABLE: string = process.cwd() ?? __dirname;
+// Determine the root directory of the application
+function findApplicationRoot(): string {
+  const cwd = process.cwd();
+
+  // Check if we're in a Docker container or development environment
+  const possiblePaths = [
+    join(cwd, "..", "plugins"), // Docker: /app/server -> /app/plugins
+    join(cwd, "plugins"), // Native/dev: /path/to/app -> /path/to/app/plugins
+    join(__dirname, "..", "..", "..", "plugins"), // Compiled: build/server/src -> plugins
+    join(__dirname, "..", "..", "plugins"), // Dev: server/src -> plugins
+  ];
+
+  for (const path of possiblePaths) {
+    if (existsSync(path)) {
+      return resolve(path);
+    }
+  }
+
+  // Fallback: create plugins directory in current working directory
+  const fallback = join(cwd, "plugins");
+  return resolve(fallback);
+}
+
+export const PLUGINS_DIRECTORY: string = findApplicationRoot();
 
 export const pluginApis: { [name: string]: WeebsyncApi } = {};
 export async function initPluginSystem(applicationState: ApplicationState) {
-  const pluginDir =
-    process.env.WEEB_SYNC_PLUGIN_DIR ?? `${PATH_TO_EXECUTABLE}/plugins`;
-  applicationState.communication.logDebug(pluginDir);
-
+  const pluginDir = process.env.WEEB_SYNC_PLUGIN_DIR ?? PLUGINS_DIRECTORY;
   try {
-    const pluginFolders = readdirSync(pluginDir).filter(
-      (folder) => !folder.startsWith(".") && folder !== "node_modules",
+    const allFolders = readdirSync(pluginDir);
+
+    const pluginFolders = allFolders.filter(
+      (folder) =>
+        folder !== ".DS_Store" &&
+        folder !== "node_modules" &&
+        folder !== ".git" &&
+        folder !== "Thumbs.db" &&
+        folder !== "desktop.ini" &&
+        folder !== "._.DS_Store",
     );
-    applicationState.communication.logInfo(
-      `Found ${pluginFolders.length} plugin${
-        pluginFolders.length === 0 || pluginFolders.length > 1 ? "s" : ""
-      }.`,
-    );
+
+    if (pluginFolders.length > 0) {
+      applicationState.communication.logInfo(
+        `Loading ${pluginFolders.length} plugin${pluginFolders.length > 1 ? "s" : ""}`,
+      );
+    }
+
     for (const pluginFolder of pluginFolders) {
       try {
         await loadPlugin(pluginDir, pluginFolder, applicationState);
       } catch (e) {
         applicationState.communication.logError(
-          `Could not load plugin in folder "${pluginFolder}", reason: ${e instanceof Error ? e.message : String(e)}`,
+          `Could not load plugin "${pluginFolder}": ${e instanceof Error ? e.message : String(e)}`,
         );
       }
     }
@@ -56,7 +87,7 @@ export async function initPluginSystem(applicationState: ApplicationState) {
 
 export interface WeebsyncPlugin extends WeebsyncPluginBaseInfo {
   register: (api: WeebsyncApi) => Promise<void>;
-  onFilesDownloadSuccess: (
+  onFilesDownloadSuccess?: (
     api: WeebsyncApi,
     config: WeebsyncPluginBaseInfo["config"],
   ) => Promise<void>;
@@ -151,15 +182,22 @@ async function loadPlugin(
           default: WeebsyncPlugin;
         }
       ).default;
-    } catch {
-      applicationState.communication.logWarning(
-        "Could not load plugin as .mjs, trying .js now...",
-      );
-      plugin = (
-        (await import(`${thisPluginDirectory}/index.js`)) as {
-          default: WeebsyncPlugin;
+    } catch (mjsError) {
+      try {
+        const imported = await import(`${thisPluginDirectory}/index.js`);
+        plugin = imported.default || imported;
+      } catch (jsError) {
+        // Try with require for CommonJS modules
+        try {
+          const { createRequire } = await import("module");
+          const require = createRequire(import.meta.url);
+          plugin = require(`${thisPluginDirectory}/index.js`);
+        } catch (cjsError) {
+          throw new Error(
+            `Could not load plugin: .mjs error: ${mjsError}, .js error: ${jsError}, .cjs error: ${cjsError}`,
+          );
         }
-      ).default;
+      }
     }
 
     pluginApis[plugin.name] = {

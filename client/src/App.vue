@@ -97,19 +97,6 @@
                         class="config__text-field"
                       />
                     </v-col>
-                    <v-col cols="12" sm="6" md="3">
-                      <v-text-field
-                        v-model="config.downloadSpeedLimitMbps"
-                        dense
-                        hide-details="auto"
-                        :rules="downloadSpeedLimitRules"
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        label="Download speed limit (MB/s, 0 = no limit)"
-                        class="config__text-field"
-                      />
-                    </v-col>
                   </v-row>
                   <v-row justify="start">
                     <v-col cols="12" sm="6" md="3">
@@ -148,16 +135,6 @@
                         type="password"
                         label="Password"
                         class="config__text-field"
-                      />
-                    </v-col>
-                  </v-row>
-                  <v-row>
-                    <v-col cols="12" sm="6" md="6">
-                      <v-checkbox
-                        v-model="config.server.allowSelfSignedCert"
-                        label="Allow self-signed SSL certificates"
-                        hide-details
-                        class="config__checkbox"
                       />
                     </v-col>
                   </v-row>
@@ -250,14 +227,22 @@
                               </v-row>
                               <v-row justify="start">
                                 <v-col cols="12" sm="12">
-                                  <v-text-field
-                                    v-model="syncItem.destinationFolder"
-                                    dense
-                                    hide-details="auto"
-                                    type="text"
-                                    label="Destination folder"
-                                    class="config__text-field"
-                                  />
+                                  <div class="config__actionable-field">
+                                    <v-text-field
+                                      v-model="syncItem.destinationFolder"
+                                      dense
+                                      hide-details="auto"
+                                      type="text"
+                                      label="Destination folder"
+                                      class="config__text-field"
+                                    />
+                                    <local-storage-viewer
+                                      :item="syncItem"
+                                      @save="
+                                        destinationPathPicked(syncItem, $event)
+                                      "
+                                    />
+                                  </div>
                                 </v-col>
                               </v-row>
                               <v-row justify="start">
@@ -347,97 +332,66 @@
     </div>
     <!-- Sync Control Bar -->
     <v-card class="sync-control-bar" flat>
-      <v-card-text class="d-flex justify-space-between align-center pa-3">
-        <div class="d-flex align-center">
-          <!-- Left side: Status and info chips -->
-          <v-chip
-            v-if="isSyncing"
-            :color="isSyncPaused ? 'warning' : 'success'"
-            size="default"
-            variant="flat"
-            class="mr-2"
-          >
-            <v-icon
-              :icon="isSyncPaused ? mdiPause : mdiPlay"
-              size="small"
-              class="mr-1"
-            />
-            {{ isSyncPaused ? "Paused" : "Running" }}
-          </v-chip>
+      <v-card-text class="pa-3">
+        <div class="d-flex flex-wrap justify-space-between align-center ga-2">
+          <!-- Left side: Status and info chips with flex-wrap -->
+          <div class="d-flex flex-wrap align-center ga-2 flex-grow-1">
+            <!-- Progress chip -->
+            <v-chip
+              v-if="bottomBar.fileProgress"
+              color="info"
+              size="default"
+              variant="tonal"
+            >
+              {{ bottomBar.fileProgress }}
+            </v-chip>
 
-          <!-- Progress chip -->
-          <v-chip
-            v-if="bottomBar.fileProgress"
-            color="info"
-            size="default"
-            variant="tonal"
-            class="mr-2"
-          >
-            {{ bottomBar.fileProgress }}
-          </v-chip>
+            <!-- Download speed chip -->
+            <v-chip
+              v-if="bottomBar.downloadSpeed"
+              color="primary"
+              size="default"
+              variant="tonal"
+            >
+              {{ bottomBar.downloadSpeed }}
+            </v-chip>
 
-          <!-- Download speed chip -->
-          <v-chip
-            v-if="bottomBar.downloadSpeed"
-            color="primary"
-            size="default"
-            variant="tonal"
-            class="mr-2"
-          >
-            {{ bottomBar.downloadSpeed }}
-          </v-chip>
+            <!-- Auto-sync timer chip -->
+            <v-chip
+              v-if="!isSyncing && autoSyncTimeRemaining"
+              color="secondary"
+              size="default"
+              variant="tonal"
+            >
+              Next sync: {{ autoSyncTimeRemaining }}
+            </v-chip>
+          </div>
 
-          <!-- Auto-sync timer chip -->
-          <v-chip
-            v-if="!isSyncing && autoSyncTimeRemaining"
-            color="secondary"
-            size="default"
-            variant="tonal"
-          >
-            Next sync: {{ autoSyncTimeRemaining }}
-          </v-chip>
-        </div>
+          <!-- Right side: Control buttons with flex-shrink-0 to prevent shrinking -->
+          <div class="d-flex align-center ga-2 flex-shrink-0">
+            <!-- Save button - only visible in config/sync tabs -->
+            <v-btn
+              v-if="tab === 'config' || tab === 'sync'"
+              size="default"
+              variant="tonal"
+              :prepend-icon="mdiContentSave"
+              color="success"
+              @click="sendConfig()"
+            >
+              Save
+            </v-btn>
 
-        <div class="d-flex align-center">
-          <!-- Right side: Control buttons -->
-          <!-- Save button - only visible in config/sync tabs -->
-          <v-btn
-            v-if="tab === 'config' || tab === 'sync'"
-            size="default"
-            variant="tonal"
-            :prepend-icon="mdiContentSave"
-            color="success"
-            class="mr-3"
-            @click="sendConfig()"
-          >
-            Save
-          </v-btn>
-
-          <!-- Sync control buttons -->
-          <v-btn
-            size="default"
-            variant="tonal"
-            :prepend-icon="
-              isSyncing ? (isSyncPaused ? mdiPlay : mdiPause) : mdiSync
-            "
-            :color="
-              isSyncing ? (isSyncPaused ? 'success' : 'warning') : 'primary'
-            "
-            class="mr-2"
-            @click="sync()"
-          >
-            {{ isSyncing ? (isSyncPaused ? "Resume" : "Pause") : "Sync" }}
-          </v-btn>
-          <v-btn
-            v-if="isSyncing"
-            size="default"
-            variant="tonal"
-            :prepend-icon="mdiStop"
-            color="error"
-            @click="stopSync()"
-          >
-            Stop
-          </v-btn>
+            <!-- Sync control buttons -->
+            <v-btn
+              size="default"
+              variant="tonal"
+              :prepend-icon="isSyncing ? mdiStop : mdiSync"
+              :color="isSyncing ? 'warning' : 'primary'"
+              @click="sync()"
+            >
+              {{ isSyncing ? "Stop" : "Sync" }}
+            </v-btn>
+          </div>
         </div>
       </v-card-text>
     </v-card>
@@ -447,6 +401,7 @@
 <script lang="ts" setup>
 import UpdateChecker from "./UpdateChecker.vue";
 import FtpViewer from "./FtpViewer.vue";
+import LocalStorageViewer from "./LocalStorageViewer.vue";
 import RegexDebugger from "./RegexDebugger.vue";
 import { PerfectScrollbar } from "vue3-perfect-scrollbar";
 
@@ -460,8 +415,6 @@ import {
   mdiContentCopy,
   mdiDelete,
   mdiPlusCircleOutline,
-  mdiPause,
-  mdiPlay,
   mdiStop,
   mdiContentSave,
   mdiSync,
@@ -478,7 +431,6 @@ const {
   configLoaded,
   config,
   isSyncing,
-  isSyncPaused,
   currentVersion,
   latestVersion,
   bottomBar,
@@ -499,21 +451,6 @@ const syncIntervalRules: Array<(value: number | string) => string | boolean> = [
     }
     if (numValue > 1440) {
       return "Sync interval cannot exceed 1440 minutes (24 hours)";
-    }
-    return true;
-  },
-];
-
-const downloadSpeedLimitRules: Array<
-  (value: number | string) => string | boolean
-> = [
-  (v) => {
-    const numValue = typeof v === "string" ? parseFloat(v) : v;
-    if (isNaN(numValue)) {
-      return "Must be a valid number";
-    }
-    if (numValue < 0) {
-      return "Speed limit cannot be negative";
     }
     return true;
   },
@@ -549,24 +486,24 @@ function sendConfig() {
 }
 
 function sync() {
-  if (isSyncing.value && !isSyncPaused.value) {
-    // If syncing and not paused, pause it
-    communication.pauseSync();
-  } else if (isSyncing.value && isSyncPaused.value) {
-    // If syncing and paused, resume it
-    communication.resumeSync();
+  if (isSyncing.value) {
+    // If syncing, stop it
+    communication.stopSync();
   } else {
     // If not syncing, start sync
     communication.sync();
   }
 }
 
-function stopSync() {
-  communication.sync(); // This will abort the sync since it's already running
+function pathPicked(syncItem: SyncMap, update: string) {
+  console.log("pathPicked called with:", update);
+  console.log("syncItem before update:", syncItem.originFolder);
+  syncItem.originFolder = update;
+  console.log("syncItem after update:", syncItem.originFolder);
 }
 
-function pathPicked(syncItem: SyncMap, update: string) {
-  syncItem.originFolder = update;
+function destinationPathPicked(syncItem: SyncMap, update: string) {
+  syncItem.destinationFolder = update;
 }
 </script>
 
@@ -714,5 +651,6 @@ function pathPicked(syncItem: SyncMap, update: string) {
   left: 0;
   right: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
+  z-index: 1000; /* Ensure control bar stays above expanded sync cards */
 }
 </style>

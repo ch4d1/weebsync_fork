@@ -1,10 +1,8 @@
 import fs from "fs";
-import { Transform } from "stream";
 
 import { Communication } from "./communication";
 import { FileInfo, Client, FTPResponse } from "basic-ftp";
 import { Config } from "@shared/types";
-import { ApplicationState } from "./index";
 
 export type CreateFtpClientResult =
   | {
@@ -49,13 +47,7 @@ export class FTP {
       port: config.server.port,
       password: config.server.password,
       secure: true,
-      secureOptions: {
-        rejectUnauthorized:
-          !config.server.allowSelfSignedCert &&
-          process.env.NODE_ENV !== "development",
-        // SSL certificate validation can be disabled via allowSelfSignedCert config option
-        // For development, you can also set NODE_ENV=development to bypass validation
-      },
+      secureOptions: { rejectUnauthorized: false },
     });
   }
 
@@ -81,277 +73,82 @@ export class FTP {
     hostFilePath: string,
     localFileStream: fs.WriteStream,
     size: number,
-    config?: Config,
-    applicationState?: ApplicationState,
-  ): Promise<Transform | null> {
-    const updateInterval = 500; // Update every 500ms
-    let lastBytesWritten = 0;
-    let lastUpdateTime = Date.now();
-    let progressTimer: NodeJS.Timeout;
+  ): Promise<void> {
+    const startTime = Date.now();
+    const speedHistory: number[] = [];
+    const maxHistoryLength = 5; // Keep last 5 measurements for smoothing
 
-    // Parse speed limit from config
-    let speedLimitMbps: number | null = null;
-    if (config?.downloadSpeedLimitMbps) {
-      if (typeof config.downloadSpeedLimitMbps === "string") {
-        speedLimitMbps = parseFloat(config.downloadSpeedLimitMbps);
-      } else {
-        speedLimitMbps = config.downloadSpeedLimitMbps;
-      }
-    }
-
-    const speedLimitBytesPerSecond =
-      speedLimitMbps && speedLimitMbps > 0
-        ? speedLimitMbps * 1024 * 1024
-        : null;
-
-    // Function to update progress
-    const updateProgress = () => {
+    // Timer-based progress tracking every 500ms
+    const progressTimer = setInterval(() => {
+      this._lastAction = new Date();
       const currentTime = Date.now();
       const currentBytes = localFileStream.bytesWritten;
-      const timeDiff = currentTime - lastUpdateTime;
+      const progress = (currentBytes / size) * 100;
 
-      if (timeDiff > 0) {
-        const bytesDiff = currentBytes - lastBytesWritten;
-        const progress = (currentBytes / size) * 100;
+      const totalTimeInSeconds = (currentTime - startTime) / 1000;
 
-        // Calculate speed: bytes per millisecond -> bytes per second -> megabytes per second
-        const bytesPerSecond = (bytesDiff / timeDiff) * 1000;
-        const megabytesPerSecond = bytesPerSecond / (1024 * 1024);
+      // Only calculate after 1 second and if we have meaningful data
+      if (totalTimeInSeconds >= 1 && currentBytes > 0) {
+        // Calculate overall average speed from start
+        const overallSpeedBytesPerSecond = currentBytes / totalTimeInSeconds;
+
+        // Convert to MiB/s using binary (1024) - Mebibyte = 1,048,576 bytes
+        const mebibytesPerSecond = overallSpeedBytesPerSecond / (1024 * 1024);
+
+        // Add to history for smoothing
+        speedHistory.push(mebibytesPerSecond);
+        if (speedHistory.length > maxHistoryLength) {
+          speedHistory.shift(); // Remove oldest measurement
+        }
+
+        // Calculate smoothed speed (simple moving average of MiB/s)
+        const smoothedMebibytesPerSecond =
+          speedHistory.reduce((sum, speed) => sum + speed, 0) /
+          speedHistory.length;
 
         this._communication.updateBottomBar({
           fileProgress: `${progress.toFixed(2).padStart(6, " ")}%`,
-          downloadSpeed: `${megabytesPerSecond
-            .toFixed(2)
-            .padStart(7, " ")} MB/s`,
+          downloadSpeed: `${smoothedMebibytesPerSecond.toFixed(1).padStart(7, " ")} MiB/s`,
         });
-
-        lastBytesWritten = currentBytes;
-        lastUpdateTime = currentTime;
+      } else {
+        // Still update progress
+        this._communication.updateBottomBar({
+          fileProgress: `${progress.toFixed(2).padStart(6, " ")}%`,
+          downloadSpeed: "... MiB/s",
+        });
       }
-    };
-
-    // Start progress monitoring
-    progressTimer = setInterval(updateProgress, updateInterval);
+    }, 500);
 
     this._lastAction = new Date();
-    let transformStream = null;
-
     try {
-      if (speedLimitBytesPerSecond || applicationState) {
-        // Use custom download with speed limiting and pause support
-        transformStream = await this._downloadWithControlledSpeed(
-          localFileStream,
-          hostFilePath,
-          speedLimitBytesPerSecond,
-          applicationState,
-        );
-      } else {
-        await this._client.downloadTo(localFileStream, hostFilePath);
-      }
+      await this._client.downloadTo(localFileStream, hostFilePath);
     } finally {
-      // Clear the timer and reset progress display
       clearInterval(progressTimer);
       this._communication.updateBottomBar({
         fileProgress: "",
         downloadSpeed: "",
       });
     }
-
-    return transformStream; // Return the transform stream for abort control
-  }
-
-  private async _downloadWithControlledSpeed(
-    localFileStream: fs.WriteStream,
-    hostFilePath: string,
-    speedLimitBytesPerSecond: number | null,
-    applicationState?: ApplicationState,
-  ): Promise<Transform> {
-    // Wrap the original downloadTo with pause/resume and speed control
-    const originalDownloadTo = this._client.downloadTo.bind(this._client);
-
-    // Create a transform stream for speed limiting and pause control
-    const { Transform } = await import("stream");
-
-    let totalBytesTransferred = 0;
-    let lastSpeedCheckTime = Date.now();
-    let lastSpeedCheckBytes = 0;
-    let isAborted = false;
-
-    const controlledTransform = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        // Handle abort
-        if (isAborted) {
-          callback(new Error("Manual abortion."));
-          return;
-        }
-
-        // Handle pause state
-        const checkPauseAndContinue = async () => {
-          // Wait for resume if paused
-          if (applicationState?.syncPaused) {
-            while (applicationState.syncPaused && !isAborted) {
-              await new Promise((resolve) => setTimeout(resolve, 100));
-            }
-          }
-
-          if (isAborted) {
-            callback(new Error("Manual abortion."));
-            return;
-          }
-
-          totalBytesTransferred += chunk.length;
-
-          // Speed limiting - smoother approach
-          if (speedLimitBytesPerSecond) {
-            const now = Date.now();
-            const timeSinceLastCheck = now - lastSpeedCheckTime;
-
-            if (timeSinceLastCheck >= 50) {
-              // Check every 50ms for smoother control
-              const bytesSinceLastCheck =
-                totalBytesTransferred - lastSpeedCheckBytes;
-
-              // Calculate how long this chunk should have taken at target speed
-              const targetTimeForChunk =
-                (bytesSinceLastCheck / speedLimitBytesPerSecond) * 1000;
-
-              // If we processed it faster than target, add appropriate delay
-              if (timeSinceLastCheck < targetTimeForChunk) {
-                const delayNeeded = targetTimeForChunk - timeSinceLastCheck;
-                if (delayNeeded > 0) {
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, Math.min(delayNeeded, 500)),
-                  );
-                }
-              }
-
-              lastSpeedCheckTime = Date.now(); // Update to actual time after delay
-              lastSpeedCheckBytes = totalBytesTransferred;
-            }
-          }
-
-          this.push(chunk);
-          callback();
-        };
-
-        checkPauseAndContinue().catch(callback);
-      },
-    });
-
-    // Speed limit updates during download removed to prevent stream corruption
-
-    // Set up abort listener
-    const abortHandler = () => {
-      isAborted = true;
-      controlledTransform.destroy(new Error("Manual abortion."));
-    };
-
-    // Listen for abort on the local file stream
-    localFileStream.on("error", (error) => {
-      if (error.message === "Manual abortion.") {
-        abortHandler();
-      }
-    });
-
-    // Pipe the transform stream to the local file stream
-    controlledTransform.pipe(localFileStream);
-
-    try {
-      // Download to the controlled transform stream
-      await originalDownloadTo(controlledTransform, hostFilePath);
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      if (errorMessage === "Manual abortion." || isAborted) {
-        throw new Error("Manual abortion.");
-      }
-      throw error;
-    }
-
-    return controlledTransform; // Return the transform stream for external control
   }
 }
 
-// FTP Connection Pool with proper cleanup
-class FTPConnectionPool {
-  private connections: FTP[] = [];
-  private readonly maxConnections = 3;
-  private cleanupInterval: NodeJS.Timeout | undefined;
-  private readonly connectionTimeout = 1000 * 60; // 1 minute
+let ftpConnections: FTP[] = [];
+const FTP_CONNECTION_TIMEOUT = 1000 * 60;
+setInterval(() => {
+  cleanFTPConnections();
+}, FTP_CONNECTION_TIMEOUT);
 
-  constructor() {
-    this.startCleanup();
-  }
-
-  private startCleanup(): void {
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, this.connectionTimeout);
-  }
-
-  public destroy(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = undefined;
+function cleanFTPConnections() {
+  ftpConnections = ftpConnections.filter((ftp) => {
+    if (
+      Date.now() - ftp.getLastActionTime() > FTP_CONNECTION_TIMEOUT ||
+      ftp.isClosed()
+    ) {
+      ftp.close();
+      return false;
     }
-    this.connections.forEach((conn) => {
-      try {
-        conn.close();
-      } catch (error) {
-        // Log but don't throw during cleanup
-        console.error("Error closing connection during destroy:", error);
-      }
-    });
-    this.connections = [];
-  }
-
-  private cleanup(): void {
-    this.connections = this.connections.filter((ftp) => {
-      const shouldRemove =
-        Date.now() - ftp.getLastActionTime() > this.connectionTimeout ||
-        ftp.isClosed();
-
-      if (shouldRemove) {
-        try {
-          ftp.close();
-        } catch (error) {
-          // Log but don't throw during cleanup
-          console.error("Error closing connection during cleanup:", error);
-        }
-        return false;
-      }
-      return true;
-    });
-  }
-
-  public getConnections(): FTP[] {
-    return this.connections;
-  }
-
-  public addConnection(connection: FTP): void {
-    this.connections.push(connection);
-  }
-
-  public getConnectionCount(): number {
-    return this.connections.length;
-  }
-
-  public getMaxConnections(): number {
-    return this.maxConnections;
-  }
-
-  public findAvailableConnection(): FTP | undefined {
-    this.cleanup(); // Clean before searching
-    return this.connections.find((f) => f.available() && !f.isClosed());
-  }
-}
-
-// Global connection pool instance
-const ftpConnectionPool = new FTPConnectionPool();
-
-// Export for cleanup on shutdown
-export function destroyFTPConnectionPool(): void {
-  ftpConnectionPool.destroy();
+    return true;
+  });
 }
 
 export async function getFTPClient(
@@ -359,28 +156,25 @@ export async function getFTPClient(
   communication: Communication,
 ): Promise<CreateFtpClientResult> {
   try {
-    let freeFtpConnection = ftpConnectionPool.findAvailableConnection();
-
+    cleanFTPConnections();
+    let freeFtpConnection = ftpConnections.find(
+      (f) => f.available() && !f.isClosed(),
+    );
     if (!freeFtpConnection) {
-      if (
-        ftpConnectionPool.getConnectionCount() >=
-        ftpConnectionPool.getMaxConnections()
-      ) {
+      if (ftpConnections.length >= 3) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         return await getFTPClient(config, communication);
       }
 
       freeFtpConnection = new FTP(communication);
-      ftpConnectionPool.addConnection(freeFtpConnection);
+      ftpConnections.push(freeFtpConnection);
       await freeFtpConnection.connect(config);
     }
 
     freeFtpConnection.borrow();
     return { type: "Ok", data: freeFtpConnection };
   } catch (err) {
-    return {
-      type: "ConnectionError",
-      message: err instanceof Error ? err.message : String(err),
-    };
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return { type: "ConnectionError", message: errorMessage };
   }
 }
