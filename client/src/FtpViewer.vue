@@ -544,10 +544,12 @@ function onSearchInput() {
 
 let timeout: ReturnType<typeof setTimeout>;
 const ftpProps = defineProps<{ item: SyncMap }>();
-const syncItem = ref(ftpProps.item);
+
+// Use computed to make syncItem reactive to prop changes
+const syncItem = computed(() => ftpProps.item);
 
 watch(
-  [ftpProps],
+  () => ftpProps.item,
   () => {
     if (timeout) {
       clearTimeout(timeout);
@@ -611,6 +613,18 @@ function isRoot(path: string) {
   return !path.includes("/");
 }
 
+// Check if path looks like it contains anime within a season directory
+function isAnimeDirectoryPath(path: string): boolean {
+  // Check if path contains season patterns
+  const seasonPatterns = [
+    /\/\d{4}-\d+\s+(Spring|Summer|Fall|Winter|Autumn)\//i,
+    /\/\d{4}\s+(Spring|Summer|Fall|Winter|Autumn)\//i,
+    /\/Season\s+\d+\//i,
+  ];
+
+  return seasonPatterns.some((pattern) => pattern.test(path));
+}
+
 // Extract season directory from origin folder path
 function getSeasonDirFromOriginFolder(originFolder: string): string {
   if (!originFolder || originFolder === "/") {
@@ -649,12 +663,18 @@ function onOpenModal() {
   const originFolder = syncItem.value.originFolder;
 
   if (!originFolder || originFolder === "/") {
-    // Start from root if originFolder is empty
+    // Start from root if originFolder is empty (new SyncMaps)
     fetchDirectory("/");
   } else {
-    // Extract season directory and navigate there instead of direct originFolder
-    const seasonDir = getSeasonDirFromOriginFolder(originFolder);
-    fetchDirectory(seasonDir);
+    // Check if this looks like an anime directory path that needs season directory extraction
+    if (isAnimeDirectoryPath(originFolder)) {
+      // Extract season directory and navigate there for anime viewer compatibility
+      const seasonDir = getSeasonDirFromOriginFolder(originFolder);
+      fetchDirectory(seasonDir);
+    } else {
+      // For non-anime paths, navigate directly to the originFolder
+      fetchDirectory(originFolder);
+    }
   }
 }
 

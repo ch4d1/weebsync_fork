@@ -1,8 +1,10 @@
 <template>
   <div class="anime-ftp-viewer d-flex flex-column" style="height: 100%">
-    <!-- Enhanced search and filter controls -->
+    <!-- Enhanced search and filter controls - Mobile optimized -->
     <div class="px-3 py-2 border-bottom flex-shrink-0">
+      <!-- Primary controls row - always visible -->
       <v-row dense no-gutters align="center" class="ga-2">
+        <!-- Search field -->
         <v-col cols="12" sm="4">
           <v-text-field
             v-model="searchQuery"
@@ -14,38 +16,107 @@
             clearable
           />
         </v-col>
-        <v-col cols="12" sm="3">
-          <v-select
-            v-model="sortBy"
-            :items="sortOptions"
-            label="Sort by"
-            variant="outlined"
-            density="compact"
-            hide-details
-          />
-        </v-col>
-        <v-col cols="12" sm="2">
-          <v-btn-toggle
-            v-model="viewMode"
-            mandatory
-            density="compact"
-            variant="outlined"
-            class="ml-2"
-          >
-            <v-btn value="grid" size="small">
-              <v-icon>{{ mdiViewGrid }}</v-icon>
+
+        <!-- Desktop: Show sort + view mode + status -->
+        <template v-if="$vuetify.display.smAndUp">
+          <v-col sm="3">
+            <v-select
+              v-model="sortBy"
+              :items="sortOptions"
+              label="Sort by"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </v-col>
+          <v-col sm="2">
+            <v-btn-toggle
+              v-model="viewMode"
+              mandatory
+              density="compact"
+              variant="outlined"
+              class="ml-2"
+            >
+              <v-btn value="grid" size="small">
+                <v-icon>{{ mdiViewGrid }}</v-icon>
+              </v-btn>
+              <v-btn value="list" size="small">
+                <v-icon>{{ mdiViewList }}</v-icon>
+              </v-btn>
+            </v-btn-toggle>
+          </v-col>
+          <v-col cols="auto">
+            <v-chip
+              v-if="loadingStatus"
+              :color="
+                loadingStatus.includes('completed') ? 'success' : 'primary'
+              "
+              size="small"
+              class="ml-2"
+            >
+              {{ loadingStatus }}
+            </v-chip>
+          </v-col>
+        </template>
+
+        <!-- Mobile: Compact controls in single row -->
+        <template v-if="$vuetify.display.xs">
+          <v-col cols="auto">
+            <v-select
+              v-model="sortBy"
+              :items="sortOptions"
+              variant="outlined"
+              density="compact"
+              hide-details
+              style="min-width: 100px"
+            />
+          </v-col>
+          <v-col cols="auto">
+            <v-btn-toggle
+              v-model="viewMode"
+              mandatory
+              density="compact"
+              variant="outlined"
+              size="small"
+            >
+              <v-btn value="grid" size="x-small">
+                <v-icon size="small">{{ mdiViewGrid }}</v-icon>
+              </v-btn>
+              <v-btn value="list" size="x-small">
+                <v-icon size="small">{{ mdiViewList }}</v-icon>
+              </v-btn>
+            </v-btn-toggle>
+          </v-col>
+          <v-col cols="auto">
+            <v-btn
+              :icon="showMobileFilters ? mdiChevronUp : mdiChevronDown"
+              variant="outlined"
+              density="compact"
+              size="small"
+              @click="showMobileFilters = !showMobileFilters"
+              :color="hasActiveFilters ? 'primary' : 'default'"
+            >
+              <v-badge
+                v-if="hasActiveFilters"
+                :content="activeFiltersCount"
+                color="primary"
+                overlap
+              >
+                <v-icon size="small">{{ mdiTune }}</v-icon>
+              </v-badge>
+              <v-icon v-else size="small">{{ mdiTune }}</v-icon>
             </v-btn>
-            <v-btn value="list" size="small">
-              <v-icon>{{ mdiViewList }}</v-icon>
-            </v-btn>
-          </v-btn-toggle>
-        </v-col>
-        <v-col cols="auto">
+          </v-col>
+        </template>
+      </v-row>
+
+      <!-- Mobile status chip row -->
+      <v-row v-if="$vuetify.display.xs && loadingStatus" dense class="mt-1">
+        <v-col>
           <v-chip
-            v-if="loadingStatus"
             :color="loadingStatus.includes('completed') ? 'success' : 'primary'"
             size="small"
-            class="ml-2"
+            block
           >
             {{ loadingStatus }}
           </v-chip>
@@ -88,8 +159,8 @@
         </template>
       </v-alert>
 
-      <!-- Additional Filter Row for Genre and Audio/Subtitle -->
-      <div>
+      <!-- Advanced filters - Always visible on desktop, collapsible on mobile -->
+      <div v-if="$vuetify.display.smAndUp || showMobileFilters">
         <v-row dense no-gutters align="center" class="ga-2 mt-2">
           <v-col cols="12" sm="4">
             <v-select
@@ -869,6 +940,9 @@ import {
   mdiChevronRight,
   mdiFolderOutline,
   mdiPageNext,
+  mdiChevronUp,
+  mdiChevronDown,
+  mdiTune,
 } from "@mdi/js";
 
 interface AnimeMetadata {
@@ -957,6 +1031,7 @@ const viewMode = ref("grid");
 const selectedGenres = ref<string[]>([]);
 const selectedAudioLanguages = ref<string[]>([]);
 const selectedSubtitleLanguages = ref<string[]>([]);
+const showMobileFilters = ref(false);
 // Use loading status from props (passed from FtpViewer) or local state
 const localLoadingStatus = ref<string | null>(null);
 const loadingStatus = computed(
@@ -1152,6 +1227,14 @@ const hasActiveFilters = computed(() => {
     selectedGenres.value.length > 0 ||
     selectedAudioLanguages.value.length > 0 ||
     selectedSubtitleLanguages.value.length > 0
+  );
+});
+
+const activeFiltersCount = computed(() => {
+  return (
+    selectedGenres.value.length +
+    selectedAudioLanguages.value.length +
+    selectedSubtitleLanguages.value.length
   );
 });
 
