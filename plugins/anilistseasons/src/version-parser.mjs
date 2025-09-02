@@ -232,7 +232,8 @@ export class VersionParser {
       );
       structured.dubLanguages = uniqueAudio.map(a => ({
         code: a.code,
-        language: a.language
+        type: 'dub',
+        language: a.language // This should be the full language name
       }));
     }
 
@@ -243,7 +244,8 @@ export class VersionParser {
       );
       structured.subLanguages = uniqueSubs.map(s => ({
         code: s.code,
-        language: s.language
+        type: 'sub',
+        language: s.language // This should be the full language name
       }));
     }
 
@@ -440,11 +442,12 @@ export class VersionParser {
       .replace(/\s+/g, ' ')
       .trim();
 
-    // Step 4: Return priority - English title preferred if available
-    if (cleanEnglish && cleanEnglish.length > 0) {
-      return cleanEnglish;
-    } else if (cleanRomanji && cleanRomanji.length > 0) {
+    // Step 4: Return priority - For anime titles, prefer Romanji over localized titles in parentheses
+    // This ensures better AniList matching since Romanji titles are more standardized internationally
+    if (cleanRomanji && cleanRomanji.length > 0) {
       return cleanRomanji;
+    } else if (cleanEnglish && cleanEnglish.length > 0) {
+      return cleanEnglish;
     }
 
     // Fallback: clean up the whole title
@@ -525,8 +528,8 @@ export class VersionParser {
     cleanRomanji = cleanRomanji.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
     cleanEnglish = cleanEnglish.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // Step 5: Choose best title with fallback logic
-    let searchTitle = (cleanEnglish && cleanEnglish.length > 0) ? cleanEnglish : cleanRomanji;
+    // Step 5: Choose best title with fallback logic - prefer Romanji for better AniList matching
+    let searchTitle = (cleanRomanji && cleanRomanji.length > 0) ? cleanRomanji : cleanEnglish;
 
     // Step 6: Fallback detection for edge cases
     if (this.isResultInvalid(searchTitle)) {

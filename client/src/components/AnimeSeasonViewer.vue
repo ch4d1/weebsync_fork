@@ -17,13 +17,23 @@
           />
         </v-col>
 
-        <!-- Desktop: Show sort + view mode + status -->
+        <!-- Desktop: Show sort + sort order + view mode + status -->
         <template v-if="$vuetify.display.smAndUp">
-          <v-col sm="3">
+          <v-col sm="2">
             <v-select
               v-model="sortBy"
               :items="sortOptions"
               label="Sort by"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </v-col>
+          <v-col sm="1">
+            <v-select
+              v-model="sortOrder"
+              :items="sortOrderOptions"
+              label="Order"
               variant="outlined"
               density="compact"
               hide-details
@@ -68,7 +78,17 @@
               variant="outlined"
               density="compact"
               hide-details
-              style="min-width: 100px"
+              style="min-width: 90px"
+            />
+          </v-col>
+          <v-col cols="auto">
+            <v-btn
+              :icon="mobileSortIcon"
+              :title="mobileSortTooltip"
+              variant="outlined"
+              density="compact"
+              size="small"
+              @click="sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'"
             />
           </v-col>
           <v-col cols="auto">
@@ -943,6 +963,10 @@ import {
   mdiChevronUp,
   mdiChevronDown,
   mdiTune,
+  mdiSortAlphabeticalAscending,
+  mdiSortAlphabeticalDescending,
+  mdiSortNumericAscending,
+  mdiSortNumericDescending,
 } from "@mdi/js";
 
 interface AnimeMetadata {
@@ -968,10 +992,20 @@ interface AnimeMetadata {
 
 interface VersionInfo {
   providers: Array<{ tag: string; name: string; color: string }>;
-  dubLanguages: Array<{ code: string; language: string }>;
-  subLanguages: Array<{ code: string; language: string }>;
-  audio?: Array<{ code: string; language: string; full?: string }>;
-  subtitles?: Array<{ code: string; language: string; full?: string }>;
+  dubLanguages: Array<{ code: string; language: string; type?: string }>;
+  subLanguages: Array<{ code: string; language: string; type?: string }>;
+  audio?: Array<{
+    code: string;
+    language: string;
+    full?: string;
+    type?: string;
+  }>;
+  subtitles?: Array<{
+    code: string;
+    language: string;
+    full?: string;
+    type?: string;
+  }>;
   quality?: string;
   season?: number;
   special?: boolean;
@@ -1026,12 +1060,14 @@ const emit = defineEmits<{
 
 // Reactive data
 const searchQuery = ref("");
-const sortBy = ref("name");
+const sortBy = ref("animeTitle"); // Default to English sorting
+const sortOrder = ref("asc");
 const viewMode = ref("grid");
 const selectedGenres = ref<string[]>([]);
 const selectedAudioLanguages = ref<string[]>([]);
 const selectedSubtitleLanguages = ref<string[]>([]);
 const showMobileFilters = ref(false);
+
 // Use loading status from props (passed from FtpViewer) or local state
 const localLoadingStatus = ref<string | null>(null);
 const loadingStatus = computed(
@@ -1072,18 +1108,153 @@ const processedItems = ref<AnimeItem[]>([]);
 const extractedColors = ref<Map<string, string>>(new Map());
 const colorExtractionQueue = ref<Set<string>>(new Set());
 
+// Title parsing functions (similar to version parser)
+function parseDirectoryTitle(directoryName: string): {
+  romanji: string;
+  english: string;
+} {
+  let title = directoryName;
+
+  // Step 1: Remove metadata brackets first (including incomplete brackets)
+  title = title.replace(/\[.*?\]/g, ""); // Complete brackets
+  title = title.replace(/\[.*$/g, ""); // Incomplete bracket at end
+
+  // Step 2: Parse format: <Romanji> (<English>) or just (<English>) or just Romanji
+  let romanji = "";
+  let english = "";
+
+  if (title.startsWith("(") && title.includes(")")) {
+    // Title starts with parentheses - treat entire content as English
+    const parenMatch = title.match(/^\(([^)]+)\)(.*)$/);
+    if (parenMatch) {
+      english = parenMatch[1]?.trim();
+      romanji = parenMatch[2]?.trim();
+    }
+  } else {
+    // Standard format: <Romanji> (<English>)
+    const lastParenIndex = title.lastIndexOf("(");
+    if (lastParenIndex > 0) {
+      romanji = title.substring(0, lastParenIndex).trim();
+      const parenContent = title.substring(lastParenIndex).match(/\(([^)]+)\)/);
+      if (parenContent) {
+        english = parenContent[1]?.trim();
+      }
+    } else {
+      // No parentheses at all
+      romanji = title;
+    }
+  }
+
+  // Step 3: Clean both parts - remove season/special indicators
+  let cleanRomanji = romanji || "";
+  let cleanEnglish = english || "";
+
+  // Remove season indicators from both parts
+  cleanRomanji = cleanRomanji.replace(/\b(?:Season\s*|S\s*)\d+/gi, "").trim();
+  cleanEnglish = cleanEnglish.replace(/\b(?:Season\s*|S\s*)\d+/gi, "").trim();
+
+  // Remove "Part X" from both parts
+  cleanRomanji = cleanRomanji.replace(/\bPart\s+\d+/gi, "").trim();
+  cleanEnglish = cleanEnglish.replace(/\bPart\s+\d+/gi, "").trim();
+
+  // Remove special indicators from both parts
+  cleanRomanji = cleanRomanji
+    .replace(/\b(?:OVA|Special|Movie|Film|TV)\b/gi, "")
+    .trim();
+  cleanEnglish = cleanEnglish
+    .replace(/\b(?:OVA|Special|Movie|Film|TV)\b/gi, "")
+    .trim();
+
+  // Final cleanup
+  cleanRomanji = cleanRomanji
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  cleanEnglish = cleanEnglish
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    romanji: cleanRomanji,
+    english: cleanEnglish,
+  };
+}
+
+function getSortableTitle(
+  item: AnimeItem,
+  sortType: "romanji" | "english",
+): string {
+  if (sortType === "english") {
+    // Priority: AniList English title > parsed English title > parsed Romanji title > item name
+    if (item.animeMetadata?.title) {
+      return item.animeMetadata.title;
+    }
+
+    const parsed = parseDirectoryTitle(item.name);
+    return parsed.english || parsed.romanji || item.name;
+  } else {
+    // Romanji sorting: parsed Romanji title > item name
+    const parsed = parseDirectoryTitle(item.name);
+    return parsed.romanji || item.name;
+  }
+}
+
 // Computed properties
 const sortOptions = computed(() => [
-  { title: "Name", value: "name" },
-  { title: "Anime Title", value: "animeTitle" },
+  { title: "Romanji", value: "name" },
+  { title: "English", value: "animeTitle" },
   { title: "Score", value: "score" },
   { title: "Episodes", value: "episodes" },
   { title: "Date Added", value: "date" },
 ]);
 
+// Dynamic sort order options based on selected sort field
+const sortOrderOptions = computed(() => {
+  const numericFields = ["score", "episodes", "date"];
+
+  if (numericFields.includes(sortBy.value)) {
+    return [
+      { title: "High to Low", value: "desc" },
+      { title: "Low to High", value: "asc" },
+    ];
+  } else {
+    // Alphabetic fields (name, animeTitle)
+    return [
+      { title: "A-Z", value: "asc" },
+      { title: "Z-A", value: "desc" },
+    ];
+  }
+});
+
+// Mobile sort button icon and tooltip
+const mobileSortIcon = computed(() => {
+  const numericFields = ["score", "episodes", "date"];
+
+  if (numericFields.includes(sortBy.value)) {
+    // For numeric fields, use different icons
+    return sortOrder.value === "asc"
+      ? mdiSortNumericAscending
+      : mdiSortNumericDescending;
+  } else {
+    // For alphabetic fields, use alphabetical icons
+    return sortOrder.value === "asc"
+      ? mdiSortAlphabeticalAscending
+      : mdiSortAlphabeticalDescending;
+  }
+});
+
+const mobileSortTooltip = computed(() => {
+  const option = sortOrderOptions.value.find(
+    (opt) => opt.value === sortOrder.value,
+  );
+  return option ? option.title : "";
+});
+
 const availableGenres = computed(() => {
   const genres = new Set<string>();
-  props.items?.forEach((item) => {
+  processedItems.value?.forEach((item) => {
     item.animeMetadata?.genres?.forEach((genre) => genres.add(genre));
   });
   return Array.from(genres).sort();
@@ -1095,29 +1266,111 @@ const availableAudioLanguages = computed(() => {
 
   console.log(
     "🎧 Computing available audio languages from",
-    props.items?.length || 0,
+    processedItems.value?.length || 0,
     "items",
   );
 
-  props.items?.forEach((item) => {
+  processedItems.value?.forEach((item) => {
     // Check if item has versions with versionInfo
     if (item.versions && item.versions.length > 0) {
       console.log(
         `🎧 Item "${item.name}" has ${item.versions.length} versions`,
       );
       item.versions.forEach((version) => {
-        if (version.versionInfo?.audio) {
+        // Use structured data from versionDescription instead of raw versionInfo
+        if (
+          version.versionDescription?.dubLanguages &&
+          version.versionDescription.dubLanguages.length > 0
+        ) {
+          console.log(
+            `🎧 Found dub languages in version "${version.name}":`,
+            version.versionDescription.dubLanguages,
+          );
+          version.versionDescription.dubLanguages.forEach((audio, index) => {
+            console.log(`🎧 DubLanguage ${index}:`, {
+              code: audio.code,
+              type: audio.type,
+              language: audio.language,
+            });
+            console.log(`🎧 Raw object:`, audio);
+
+            // Get the language name from structured data
+            let languageName = audio.language || audio.code;
+
+            // Fallback mapping for common language codes
+            if (!audio.language) {
+              const languageMap: { [key: string]: string } = {
+                ger: "German",
+                eng: "English",
+                jap: "Japanese",
+                fre: "French",
+                spa: "Spanish",
+              };
+              languageName =
+                languageMap[audio.code.toLowerCase()] || audio.code;
+            }
+
+            // Use language name as key to avoid duplicates
+            const languageKey = languageName.toLowerCase();
+            if (!audioLangsMap.has(languageKey)) {
+              audioLangsMap.set(languageKey, {
+                title: languageName,
+                value: languageKey,
+              });
+            }
+          });
+        } else if (version.versionInfo?.audio) {
           console.log(
             `🎧 Found audio in version "${version.name}":`,
             version.versionInfo.audio,
           );
+          console.log(`🎧 Version object keys:`, Object.keys(version));
+          if (version.versionDescription) {
+            console.log(`🎧 Version description:`, version.versionDescription);
+            console.log(
+              `🎧 Version description dubLanguages:`,
+              version.versionDescription.dubLanguages,
+            );
+          }
+          version.versionInfo.audio.forEach((audio, index) => {
+            console.log(`🎧 Audio ${index}:`, {
+              code: audio.code,
+              language: audio.language,
+              full: audio.full,
+            });
+          });
           version.versionInfo.audio.forEach(
             (audio: { code: string; language: string; full?: string }) => {
-              const value = audio.code.toLowerCase() + "dub";
-              audioLangsMap.set(value, {
-                title: `${audio.full} Dub`,
-                value: value,
-              });
+              if (!audio.code) return;
+
+              // Handle cases where code is already "gerdub" vs just "ger"
+              const codeClean = audio.code.toLowerCase().replace(/dub$/, "");
+
+              // Use full name if available, otherwise language, otherwise try to map code to language
+              let title = audio.full || audio.language;
+              if (!title) {
+                // Fallback mapping for common language codes
+                const languageMap: { [key: string]: string } = {
+                  ger: "German",
+                  eng: "English",
+                  jap: "Japanese",
+                  fre: "French",
+                  spa: "Spanish",
+                };
+                title = languageMap[codeClean] || codeClean;
+              }
+
+              // Remove "Dub/Sub" suffixes to show only language name
+              const cleanTitle = title.replace(/\s+(Dub|Sub|Subs)$/i, "");
+
+              // Use language name as key to avoid duplicates (one entry per language)
+              const languageKey = cleanTitle.toLowerCase();
+              if (!audioLangsMap.has(languageKey)) {
+                audioLangsMap.set(languageKey, {
+                  title: cleanTitle,
+                  value: languageKey,
+                });
+              }
             },
           );
         }
@@ -1126,25 +1379,25 @@ const availableAudioLanguages = computed(() => {
       // Fallback to directory name parsing for non-grouped items
       const itemName = item.name.toLowerCase();
       if (itemName.includes("japdub") || itemName.includes("jap")) {
-        audioLangsMap.set("japdub", { title: "Japanese Dub", value: "japdub" });
+        audioLangsMap.set("japanese", { title: "Japanese", value: "japanese" });
       }
       if (
         itemName.includes("engdub") ||
         (itemName.includes("eng") && itemName.includes("dub"))
       ) {
-        audioLangsMap.set("engdub", { title: "English Dub", value: "engdub" });
+        audioLangsMap.set("english", { title: "English", value: "english" });
       }
       if (
         itemName.includes("gerdub") ||
         (itemName.includes("ger") && itemName.includes("dub"))
       ) {
-        audioLangsMap.set("gerdub", { title: "German Dub", value: "gerdub" });
+        audioLangsMap.set("german", { title: "German", value: "german" });
       }
       if (
         itemName.includes("frendub") ||
         (itemName.includes("fre") && itemName.includes("dub"))
       ) {
-        audioLangsMap.set("frendub", { title: "French Dub", value: "frendub" });
+        audioLangsMap.set("french", { title: "French", value: "french" });
       }
     }
   });
@@ -1160,29 +1413,80 @@ const availableSubtitleLanguages = computed(() => {
 
   console.log(
     "💬 Computing available subtitle languages from",
-    props.items?.length || 0,
+    processedItems.value?.length || 0,
     "items",
   );
 
-  props.items?.forEach((item) => {
+  processedItems.value?.forEach((item) => {
     // Check if item has versions with versionInfo
     if (item.versions && item.versions.length > 0) {
-      console.log(
-        `💬 Item "${item.name}" has ${item.versions.length} versions`,
-      );
       item.versions.forEach((version) => {
-        if (version.versionInfo?.subtitles) {
-          console.log(
-            `💬 Found subtitles in version "${version.name}":`,
-            version.versionInfo.subtitles,
-          );
+        // Use structured data from versionDescription instead of raw versionInfo
+        if (
+          version.versionDescription?.subLanguages &&
+          version.versionDescription.subLanguages.length > 0
+        ) {
+          version.versionDescription.subLanguages.forEach((sub) => {
+            // Get the language name from structured data
+            let languageName = sub.language || sub.code;
+
+            // Fallback mapping for common language codes
+            if (!sub.language) {
+              const languageMap: { [key: string]: string } = {
+                ger: "German",
+                eng: "English",
+                jap: "Japanese",
+                fre: "French",
+                spa: "Spanish",
+              };
+              languageName = languageMap[sub.code.toLowerCase()] || sub.code;
+            }
+
+            // Use language name as key to avoid duplicates
+            const languageKey = languageName.toLowerCase();
+            if (!subLangsMap.has(languageKey)) {
+              console.log(
+                `💬 [STRUCTURED] Adding to map: key="${languageKey}", title="${languageName}"`,
+              );
+              subLangsMap.set(languageKey, {
+                title: languageName,
+                value: languageKey,
+              });
+            }
+          });
+        } else if (version.versionInfo?.subtitles) {
           version.versionInfo.subtitles.forEach(
             (sub: { code: string; language: string; full?: string }) => {
-              const value = sub.code.toLowerCase() + "sub";
-              subLangsMap.set(value, {
-                title: `${sub.full} Subs`,
-                value: value,
-              });
+              if (!sub.code) return;
+
+              // Handle cases where code is already "gersub" vs just "ger"
+              const codeClean = sub.code.toLowerCase().replace(/sub$/, "");
+
+              // Use full name if available, otherwise language, otherwise try to map code to language
+              let title = sub.full || sub.language;
+              if (!title) {
+                // Fallback mapping for common language codes
+                const languageMap: { [key: string]: string } = {
+                  ger: "German",
+                  eng: "English",
+                  jap: "Japanese",
+                  fre: "French",
+                  spa: "Spanish",
+                };
+                title = languageMap[codeClean] || codeClean;
+              }
+
+              // Remove "Dub/Sub" suffixes to show only language name
+              const cleanTitle = title.replace(/\s+(Dub|Sub|Subs)$/i, "");
+
+              // Use language name as key to avoid duplicates (one entry per language)
+              const languageKey = cleanTitle.toLowerCase();
+              if (!subLangsMap.has(languageKey)) {
+                subLangsMap.set(languageKey, {
+                  title: cleanTitle,
+                  value: languageKey,
+                });
+              }
             },
           );
         }
@@ -1194,31 +1498,30 @@ const availableSubtitleLanguages = computed(() => {
         itemName.includes("gersub") ||
         (itemName.includes("ger") && itemName.includes("sub"))
       ) {
-        subLangsMap.set("gersub", { title: "German Subs", value: "gersub" });
+        subLangsMap.set("german", { title: "German", value: "german" });
       }
       if (
         itemName.includes("engsub") ||
         (itemName.includes("eng") && itemName.includes("sub"))
       ) {
-        subLangsMap.set("engsub", { title: "English Subs", value: "engsub" });
+        subLangsMap.set("english", { title: "English", value: "english" });
       }
       if (
         itemName.includes("fresub") ||
         (itemName.includes("fre") && itemName.includes("sub"))
       ) {
-        subLangsMap.set("fresub", { title: "French Subs", value: "fresub" });
+        subLangsMap.set("french", { title: "French", value: "french" });
       }
       if (
         itemName.includes("spasub") ||
         (itemName.includes("spa") && itemName.includes("sub"))
       ) {
-        subLangsMap.set("spasub", { title: "Spanish Subs", value: "spasub" });
+        subLangsMap.set("spanish", { title: "Spanish", value: "spanish" });
       }
     }
   });
 
   const result = Array.from(subLangsMap.values());
-  console.log("💬 Final subtitle languages:", result);
   return result;
 });
 
@@ -1238,7 +1541,8 @@ const activeFiltersCount = computed(() => {
   );
 });
 
-const filteredItems = computed(() => {
+// First, apply all filters except sorting
+const filteredItemsBase = computed(() => {
   // Use allLoadedItems for pagination mode, props.items otherwise
   let filtered = isPaginatedMode.value
     ? allLoadedItems.value
@@ -1276,11 +1580,43 @@ const filteredItems = computed(() => {
       // Check versions with structured versionInfo first
       if (item.versions && item.versions.length > 0) {
         return item.versions.some((version) => {
-          if (version.versionInfo?.audio) {
+          // Use structured data from versionDescription for filtering
+          if (version.versionDescription?.dubLanguages) {
+            return version.versionDescription.dubLanguages.some(
+              (audio: { code: string; language: string }) => {
+                const languageName = audio.language || audio.code;
+                const languageKey = languageName.toLowerCase();
+                return selectedAudioLanguages.value.includes(languageKey);
+              },
+            );
+          } else if (version.versionInfo?.audio) {
             return version.versionInfo.audio.some(
               (audio: { code: string; language: string; full?: string }) => {
-                const audioCode = audio.code.toLowerCase() + "dub";
-                return selectedAudioLanguages.value.includes(audioCode);
+                if (!audio.code && !audio.language) return false;
+
+                // Get the language name, clean it from Dub/Sub suffixes
+                let languageName = audio.full || audio.language;
+                if (!languageName) {
+                  const languageMap: { [key: string]: string } = {
+                    ger: "German",
+                    eng: "English",
+                    jap: "Japanese",
+                    fre: "French",
+                    spa: "Spanish",
+                  };
+                  const codeClean = audio.code
+                    .toLowerCase()
+                    .replace(/dub$/, "");
+                  languageName = languageMap[codeClean] || codeClean;
+                }
+
+                const cleanLanguage = languageName.replace(
+                  /\s+(Dub|Sub|Subs)$/i,
+                  "",
+                );
+                return selectedAudioLanguages.value.includes(
+                  cleanLanguage.toLowerCase(),
+                );
               },
             );
           }
@@ -1291,19 +1627,19 @@ const filteredItems = computed(() => {
         const itemName = item.name.toLowerCase();
         return selectedAudioLanguages.value.some((selectedAudio) => {
           switch (selectedAudio) {
-            case "japdub":
+            case "japanese":
               return itemName.includes("japdub") || itemName.includes("jap");
-            case "engdub":
+            case "english":
               return (
                 itemName.includes("engdub") ||
                 (itemName.includes("eng") && itemName.includes("dub"))
               );
-            case "gerdub":
+            case "german":
               return (
                 itemName.includes("gerdub") ||
                 (itemName.includes("ger") && itemName.includes("dub"))
               );
-            case "frendub":
+            case "french":
               return (
                 itemName.includes("frendub") ||
                 (itemName.includes("fre") && itemName.includes("dub"))
@@ -1322,11 +1658,41 @@ const filteredItems = computed(() => {
       // Check versions with structured versionInfo first
       if (item.versions && item.versions.length > 0) {
         return item.versions.some((version) => {
-          if (version.versionInfo?.subtitles) {
+          // Use structured data from versionDescription for filtering
+          if (version.versionDescription?.subLanguages) {
+            return version.versionDescription.subLanguages.some(
+              (sub: { code: string; language: string }) => {
+                const languageName = sub.language || sub.code;
+                const languageKey = languageName.toLowerCase();
+                return selectedSubtitleLanguages.value.includes(languageKey);
+              },
+            );
+          } else if (version.versionInfo?.subtitles) {
             return version.versionInfo.subtitles.some(
               (sub: { code: string; language: string; full?: string }) => {
-                const subCode = sub.code.toLowerCase() + "sub";
-                return selectedSubtitleLanguages.value.includes(subCode);
+                if (!sub.code && !sub.language) return false;
+
+                // Get the language name, clean it from Dub/Sub suffixes
+                let languageName = sub.full || sub.language;
+                if (!languageName) {
+                  const languageMap: { [key: string]: string } = {
+                    ger: "German",
+                    eng: "English",
+                    jap: "Japanese",
+                    fre: "French",
+                    spa: "Spanish",
+                  };
+                  const codeClean = sub.code.toLowerCase().replace(/sub$/, "");
+                  languageName = languageMap[codeClean] || codeClean;
+                }
+
+                const cleanLanguage = languageName.replace(
+                  /\s+(Dub|Sub|Subs)$/i,
+                  "",
+                );
+                return selectedSubtitleLanguages.value.includes(
+                  cleanLanguage.toLowerCase(),
+                );
               },
             );
           }
@@ -1337,22 +1703,22 @@ const filteredItems = computed(() => {
         const itemName = item.name.toLowerCase();
         return selectedSubtitleLanguages.value.some((selectedSub) => {
           switch (selectedSub) {
-            case "gersub":
+            case "german":
               return (
                 itemName.includes("gersub") ||
                 (itemName.includes("ger") && itemName.includes("sub"))
               );
-            case "engsub":
+            case "english":
               return (
                 itemName.includes("engsub") ||
                 (itemName.includes("eng") && itemName.includes("sub"))
               );
-            case "fresub":
+            case "french":
               return (
                 itemName.includes("fresub") ||
                 (itemName.includes("fre") && itemName.includes("sub"))
               );
-            case "spasub":
+            case "spanish":
               return (
                 itemName.includes("spasub") ||
                 (itemName.includes("spa") && itemName.includes("sub"))
@@ -1365,30 +1731,43 @@ const filteredItems = computed(() => {
     });
   }
 
+  return filtered;
+});
+
+// Then apply sorting separately
+const filteredItems = computed(() => {
+  const filtered = [...filteredItemsBase.value]; // Create a copy to avoid mutating original
+
   // Apply sorting
   filtered.sort((a, b) => {
+    let result = 0;
+
     if (sortBy.value === "score") {
       const scoreA = a.animeMetadata?.averageScore || 0;
       const scoreB = b.animeMetadata?.averageScore || 0;
-      return scoreB - scoreA;
+      result = scoreA - scoreB;
     } else if (sortBy.value === "episodes") {
       const episodesA = a.animeMetadata?.episodes || 0;
       const episodesB = b.animeMetadata?.episodes || 0;
-      return episodesB - episodesA;
+      result = episodesA - episodesB;
     } else if (sortBy.value === "date") {
-      return (
-        new Date((b as any).date || 0).getTime() -
-        new Date((a as any).date || 0).getTime()
-      );
+      const dateA = new Date((a as any).modifiedTime || 0).getTime();
+      const dateB = new Date((b as any).modifiedTime || 0).getTime();
+      result = dateA - dateB;
     } else if (sortBy.value === "animeTitle") {
-      const titleA = (a.animeMetadata?.title || a.name).toLowerCase();
-      const titleB = (b.animeMetadata?.title || b.name).toLowerCase();
-      return titleA.localeCompare(titleB);
+      // English title sorting using parsed titles
+      const titleA = getSortableTitle(a, "english").toLowerCase();
+      const titleB = getSortableTitle(b, "english").toLowerCase();
+      result = titleA.localeCompare(titleB);
     } else {
-      const nameA = (a.animeMetadata?.title || a.name).toLowerCase();
-      const nameB = (b.animeMetadata?.title || b.name).toLowerCase();
-      return nameA.localeCompare(nameB);
+      // Romanji title sorting using parsed titles (default "name" sorting)
+      const titleA = getSortableTitle(a, "romanji").toLowerCase();
+      const titleB = getSortableTitle(b, "romanji").toLowerCase();
+      result = titleA.localeCompare(titleB);
     }
+
+    // Apply sort order (asc/desc)
+    return sortOrder.value === "desc" ? -result : result;
   });
 
   return filtered;
@@ -1426,19 +1805,6 @@ function selectVersion(version: Version) {
 
   // Close the FtpViewer dialog after version selection
   emit("close-viewer");
-
-  console.log("Selected version path to save as origin folder:", version.path);
-
-  // Debug metadata state after version dialog closes
-  setTimeout(() => {
-    console.log(
-      "🎯 AnimeSeasonViewer: metadata state after version dialog close:",
-      processedItems.value.map((item) => ({
-        name: item.name,
-        hasMetadata: !!item.animeMetadata,
-      })),
-    );
-  }, 100);
 }
 
 function goBack() {
@@ -1812,19 +2178,10 @@ function extractDominantColorFromImage(
           const color = bestColor as { r: number; g: number; b: number };
           const hex = `#${color.r.toString(16).padStart(2, "0")}${color.g.toString(16).padStart(2, "0")}${color.b.toString(16).padStart(2, "0")}`;
 
-          // Debug: Log detailed extraction info
           const hue = getHue(color.r, color.g, color.b);
           const max = Math.max(color.r, color.g, color.b);
           const min = Math.min(color.r, color.g, color.b);
           const saturation = max === 0 ? 0 : (max - min) / max;
-
-          console.log(`🔍 EXTRACTION DEBUG for ${imageUrl}:`);
-          console.log(
-            `📊 Clusters: ${colorMap.size} | Winner: RGB(${color.r}, ${color.g}, ${color.b}) = ${hex}`,
-          );
-          console.log(
-            `🌈 HSL: ${hue}° hue, ${(saturation * 100).toFixed(1)}% sat | Score: ${bestScore.toFixed(2)}`,
-          );
 
           // Show anime-specific color category
           let category = "neutral";
@@ -1901,17 +2258,6 @@ async function processColorExtractionQueue() {
       if (color) {
         extractedColors.value.set(imageUrl, color);
         console.log(`✨ Extracted color ${color} from ${imageUrl}`);
-
-        // Debug: Log color analysis
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        const saturation = max === 0 ? 0 : (max - min) / max;
-        console.log(
-          `🎨 Color analysis: RGB(${r},${g},${b}) Saturation: ${saturation.toFixed(2)}`,
-        );
       }
     } catch (error) {
       console.warn("Error in color extraction:", error);

@@ -164,6 +164,8 @@ async function registerSocketHandlers(api) {
             
             // Process all items with version info
             const quickEnhanced = await quickEnhanceWithVersionInfo(regularListing, api);
+            
+            
             cb(path, quickEnhanced);
             
             // Then enhance with metadata asynchronously
@@ -301,12 +303,14 @@ async function quickEnhanceWithVersionInfo(fileList, api, isPaginated = false) {
     for (const dir of animeDirectories) {
       const versionInfo = versionParser.parseVersionInfo(dir.name);
       const searchTitle = versionParser.extractSearchTitle(dir.name);
+      const versionDescription = versionParser.generateVersionDescription(versionInfo);
+      
       
       // Enhanced directory with version info
       const enhancedDir = {
         ...dir,
         versionInfo: versionInfo,
-        versionDescription: versionParser.generateVersionDescription(versionInfo),
+        versionDescription: versionDescription,
         searchTitle: searchTitle,
         isProcessing: true // Flag to show loading state in UI
       };
@@ -332,7 +336,10 @@ async function quickEnhanceWithVersionInfo(fileList, api, isPaginated = false) {
         primaryVersion: versions[0],
         isProcessing: true,
         searchTitle: title,
-        isSingleVersion: versions.length === 1 // Flag to indicate single version
+        isSingleVersion: versions.length === 1, // Flag to indicate single version
+        // Copy versionDescription from primaryVersion for frontend to access
+        versionInfo: versions[0].versionInfo,
+        versionDescription: versions[0].versionDescription
       });
       logDebug(api, `${versions.length === 1 ? 'Single version' : `Grouped ${versions.length} versions`} of "${title}"`);
     }

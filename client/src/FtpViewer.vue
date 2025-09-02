@@ -428,7 +428,26 @@ interface TreeChild {
     season?: number;
     special: boolean;
   };
-  versionDescription?: string;
+  versionDescription?: {
+    providers?: Array<{
+      code: string;
+      name: string;
+      color: string;
+    }>;
+    dubLanguages?: Array<{
+      code: string;
+      type: string;
+      language: string;
+    }>;
+    subLanguages?: Array<{
+      code: string;
+      type: string;
+      language: string;
+    }>;
+    quality?: string;
+    season?: number;
+    special?: boolean;
+  };
 }
 
 const emit = defineEmits(["save"]);
@@ -707,46 +726,78 @@ const convertedAnimeItems = computed(() => {
   return children.map((child: TreeChild) => {
     // Convert TreeChild.versions to Version[]
     const versions = child.versions?.map((version: TreeChild) => {
-      // Convert TreeChild versionInfo to VersionInfo format
-      const versionInfo = version.versionInfo
+      // Use versionDescription (structured data from server) if available, fallback to versionInfo
+      const versionInfo = version.versionDescription
         ? {
             providers:
-              version.versionInfo.providers?.map((p) => ({
+              version.versionDescription.providers?.map((p) => ({
                 tag: p.code,
                 name: p.name,
                 color: p.color,
               })) || [],
             dubLanguages:
-              version.versionInfo.audio?.map((a) => ({
-                code: a.code,
-                language: a.full || a.type,
+              version.versionDescription.dubLanguages?.map((d) => ({
+                code: d.code,
+                language: d.language, // Use structured language field
               })) || [],
             subLanguages:
-              version.versionInfo.subtitles?.map((s) => ({
+              version.versionDescription.subLanguages?.map((s) => ({
+                code: s.code,
+                language: s.language, // Use structured language field
+              })) || [],
+            audio: version.versionDescription.dubLanguages?.map((d) => ({
+              code: d.code,
+              language: d.language,
+              full: d.language,
+            })),
+            subtitles: version.versionDescription.subLanguages?.map((s) => ({
+              code: s.code,
+              language: s.language,
+              full: s.language,
+            })),
+            quality: version.versionDescription.quality,
+            season: version.versionDescription.season,
+            special: version.versionDescription.special,
+          }
+        : version.versionInfo
+          ? {
+              providers:
+                version.versionInfo.providers?.map((p) => ({
+                  tag: p.code,
+                  name: p.name,
+                  color: p.color,
+                })) || [],
+              dubLanguages:
+                version.versionInfo.audio?.map((a) => ({
+                  code: a.code,
+                  language: a.full || a.type,
+                })) || [],
+              subLanguages:
+                version.versionInfo.subtitles?.map((s) => ({
+                  code: s.code,
+                  language: s.full || s.type,
+                })) || [],
+              audio: version.versionInfo.audio?.map((a) => ({
+                code: a.code,
+                language: a.full || a.type,
+                full: a.full,
+              })),
+              subtitles: version.versionInfo.subtitles?.map((s) => ({
                 code: s.code,
                 language: s.full || s.type,
-              })) || [],
-            audio: version.versionInfo.audio?.map((a) => ({
-              code: a.code,
-              language: a.full || a.type,
-              full: a.full,
-            })),
-            subtitles: version.versionInfo.subtitles?.map((s) => ({
-              code: s.code,
-              language: s.full || s.type,
-              full: s.full,
-            })),
-            quality: version.versionInfo.quality,
-            season: version.versionInfo.season,
-            special: version.versionInfo.special,
-          }
-        : undefined;
+                full: s.full,
+              })),
+              quality: version.versionInfo.quality,
+              season: version.versionInfo.season,
+              special: version.versionInfo.special,
+            }
+          : undefined;
 
       return {
         name: version.name,
         path: version.path,
         versionDescription: versionInfo,
-        simpleVersionDescription: version.versionDescription,
+        simpleVersionDescription: version.name,
         versionInfo: versionInfo,
       };
     });
