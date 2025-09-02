@@ -88,13 +88,17 @@ WORKDIR /app/plugins
 RUN npm init -y && npm install axios@1.7.9 && \
   mkdir -p /app/config && chown -R nodejs:nodejs /app/config
 
+# Install axios globally for all plugin locations
+RUN npm install -g axios@1.7.9
+
 # Switch back to app directory
 WORKDIR /app
 
 # Set production environment
 ENV NODE_ENV=production
 ENV WEEB_SYNC_SERVER_HTTP_PORT=42380
-ENV NODE_PATH=/app/plugins/node_modules:/app/root_node_modules:/app/node_modules
+# Extended NODE_PATH to include global modules and potential external plugin paths
+ENV NODE_PATH=/usr/local/lib/node_modules:/app/plugins/node_modules:/app/root_node_modules:/app/node_modules
 
 # Add metadata labels
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \

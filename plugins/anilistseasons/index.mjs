@@ -130,8 +130,7 @@ async function registerSocketHandlers(api) {
         
         try {
           // First get regular directory listing
-          const { listDir } = await import('../../server/src/actions.js');
-          const regularListing = await listDir(path, api.applicationState);
+          const regularListing = await api.listDir(path);
           
           // Add full paths to directory items
           if (regularListing) {
@@ -1171,13 +1170,12 @@ async function scanEpisodeCount(api, item, parentPath) {
       return null;
     }
 
-    const { listDir } = await import('../../server/src/actions.js');
     const fullPath = `${parentPath}/${item.name}`.replace(/\/+/g, '/');
     
     logDebug(api, `Scanning directory for episodes: ${fullPath}`);
     
     // List contents of the anime directory
-    const entries = await listDir(fullPath, api.applicationState);
+    const entries = await api.listDir(fullPath);
     
     if (!entries || entries.length === 0) {
       return null;

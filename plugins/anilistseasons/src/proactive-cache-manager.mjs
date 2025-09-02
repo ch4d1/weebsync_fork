@@ -110,16 +110,14 @@ export class ProactiveCacheManager {
     this.logInfo(`Scanning for season directories in: ${this.config.seasonsRootPath}`);
     
     try {
-      const { checkDir, listDir } = await import('../../../server/src/actions.js');
-      
-      const rootExists = await checkDir(this.config.seasonsRootPath, this.applicationState);
+      const rootExists = await this.api.checkDir(this.config.seasonsRootPath);
       if (!rootExists) {
         this.api.communication.logWarning(`Seasons root path not found: ${this.config.seasonsRootPath}`);
         this.logInfo("Please verify the path exists and is accessible from the FTP server");
         return;
       }
 
-      const entries = await listDir(this.config.seasonsRootPath, this.applicationState);
+      const entries = await this.api.listDir(this.config.seasonsRootPath);
       
       if (!entries || entries.length === 0) {
         this.logInfo("No directories found in seasons root path");
@@ -150,8 +148,7 @@ export class ProactiveCacheManager {
   async scanSeasonDirectory(seasonPath, seasonInfo) {
     try {
       // Use WeebSync's FTP functionality to scan season directory
-      const { listDir } = await import('../../../server/src/actions.js');
-      const entries = await listDir(seasonPath, this.applicationState);
+      const entries = await this.api.listDir(seasonPath);
       
       if (!entries || entries.length === 0) {
         this.logDebug(`No entries found in season directory: ${seasonPath}`);

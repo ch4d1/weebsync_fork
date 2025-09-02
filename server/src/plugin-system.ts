@@ -15,6 +15,10 @@ import { WeebsyncPluginBaseInfo } from "@shared/types";
 import { CONFIG_FILE_DIR } from "./config";
 import { fileURLToPath } from "url";
 import { dirname, join, resolve } from "path";
+import {
+  listDir as serverListDir,
+  checkDir as serverCheckDir,
+} from "./actions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -110,6 +114,8 @@ interface WeebsyncApi {
     directoryPath: string,
     url: string,
   ) => Promise<void>;
+  listDir: (path: string) => Promise<any>;
+  checkDir: (path: string) => Promise<boolean>;
 }
 
 async function downloadPluginResourceZipAndUnzip(
@@ -135,6 +141,18 @@ async function downloadPluginResourceZipAndUnzip(
 
 async function getAxiosInstance(config?: CreateAxiosDefaults) {
   return Promise.resolve(axios.create(config ?? {}));
+}
+
+async function createListDirWrapper(applicationState: ApplicationState) {
+  return async (path: string) => {
+    return await serverListDir(path, applicationState);
+  };
+}
+
+async function createCheckDirWrapper(applicationState: ApplicationState) {
+  return async (path: string) => {
+    return await serverCheckDir(path, applicationState);
+  };
 }
 
 async function loadOrCreatePluginConfiguration(
@@ -210,6 +228,8 @@ async function loadPlugin(
       getAxiosInstance,
       downloadPluginResourceZipAndUnzip,
       thisPluginDirectory,
+      listDir: await createListDirWrapper(applicationState),
+      checkDir: await createCheckDirWrapper(applicationState),
     };
     await plugin.register(pluginApis[plugin.name]);
     plugin.config = await loadOrCreatePluginConfiguration(plugin);
