@@ -240,7 +240,13 @@ export class AniListBatchClient {
             genres
             description
             averageScore
+            meanScore
             episodes
+            nextAiringEpisode {
+              episode
+              airingAt
+              timeUntilAiring
+            }
             status
             season
             seasonYear

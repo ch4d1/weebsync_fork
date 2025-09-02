@@ -76,7 +76,13 @@ export class AniListClient {
             genres
             description
             averageScore
+            meanScore
             episodes
+            nextAiringEpisode {
+              episode
+              airingAt
+              timeUntilAiring
+            }
             status
             season
             seasonYear
@@ -593,7 +599,13 @@ export class AniListClient {
             genres
             description
             averageScore
+            meanScore
             episodes
+            nextAiringEpisode {
+              episode
+              airingAt
+              timeUntilAiring
+            }
             status
             season
             seasonYear

@@ -511,17 +511,22 @@ async function enhanceWithAnimeMetadataAsync(fileList, seasonPath, api, socket) 
             coverImageColor: cachedAnime.coverImage?.color,
             genres: cachedAnime.genres || [],
             averageScore: cachedAnime.averageScore,
+            meanScore: cachedAnime.meanScore,
             description: cachedAnime.description,
             episodes: actualEpisodes, // Use live-scanned episodes as primary count
             totalEpisodes: cachedAnime.episodes, // Keep original AniList total episodes
             scannedEpisodes: actualEpisodes !== cachedAnime.episodes ? actualEpisodes : null, // Only set if different from AniList
+            currentEpisode: cachedAnime.nextAiringEpisode?.episode ? cachedAnime.nextAiringEpisode.episode - 1 : null, // Current episode (next - 1)
+            nextAiringEpisode: cachedAnime.nextAiringEpisode ? {
+              episode: cachedAnime.nextAiringEpisode.episode,
+              airingAt: cachedAnime.nextAiringEpisode.airingAt,
+              timeUntilAiring: cachedAnime.nextAiringEpisode.timeUntilAiring
+            } : null,
             status: cachedAnime.status,
             season: cachedAnime.season,
             seasonYear: cachedAnime.seasonYear,
             id: cachedAnime.id,
-            subtitle: (cachedAnime.title?.english && cachedAnime.title?.romaji && 
-                      cachedAnime.title.english !== cachedAnime.title.romaji) 
-                      ? cachedAnime.title.romaji : null
+            subtitle: cachedAnime.title?.romaji || null
           };
           
           logDebug(api, `Using cached metadata for: ${searchTitle}`);
@@ -620,18 +625,23 @@ async function enhanceWithAnimeMetadataAsync(fileList, seasonPath, api, socket) 
               coverImageColor: anime.coverImage?.color,
               genres: anime.genres || [],
               averageScore: anime.averageScore,
+              meanScore: anime.meanScore,
               description: anime.description,
               episodes: actualEpisodes, // Use scanned episodes as primary count
               totalEpisodes: anime.episodes, // Keep original AniList total episodes  
               scannedEpisodes: actualEpisodes !== anime.episodes ? actualEpisodes : null, // Only set if different from AniList
+              currentEpisode: anime.nextAiringEpisode?.episode ? anime.nextAiringEpisode.episode - 1 : null, // Current episode (next - 1)
+              nextAiringEpisode: anime.nextAiringEpisode ? {
+                episode: anime.nextAiringEpisode.episode,
+                airingAt: anime.nextAiringEpisode.airingAt,
+                timeUntilAiring: anime.nextAiringEpisode.timeUntilAiring
+              } : null,
               status: anime.status,
               season: anime.season,
               seasonYear: anime.seasonYear,
               id: anime.id,
-              // Add subtitle (romaji title) if different from main title
-              subtitle: (anime.title?.english && anime.title?.romaji && 
-                        anime.title.english !== anime.title.romaji) 
-                        ? anime.title.romaji : null
+              // Add subtitle (romaji title) - always show if available
+              subtitle: anime.title?.romaji || null
             };
             
             // Save to cache

@@ -341,7 +341,7 @@
                         cols="12"
                         sm="6"
                         md="4"
-                        v-if="selectedAnime.animeMetadata?.averageScore"
+                        v-if="getAnimeScore(selectedAnime.animeMetadata)"
                       >
                         <v-card
                           variant="outlined"
@@ -354,17 +354,29 @@
                         >
                           <div class="text-caption text-grey">Score</div>
                           <div class="d-flex align-center">
-                            <v-rating
-                              :model-value="
-                                selectedAnime.animeMetadata.averageScore / 20
+                            <v-icon
+                              :icon="
+                                getScoreDisplay(
+                                  getAnimeScore(selectedAnime.animeMetadata),
+                                ).icon
                               "
-                              readonly
-                              density="compact"
+                              :color="
+                                getScoreDisplay(
+                                  getAnimeScore(selectedAnime.animeMetadata),
+                                ).color
+                              "
                               size="small"
+                              class="mr-1"
                             />
-                            <span class="ml-2 text-h6"
+                            <span
+                              class="text-h6"
+                              :style="{
+                                color: getScoreDisplay(
+                                  getAnimeScore(selectedAnime.animeMetadata),
+                                ).color,
+                              }"
                               >{{
-                                selectedAnime.animeMetadata.averageScore
+                                getAnimeScore(selectedAnime.animeMetadata)
                               }}%</span
                             >
                           </div>
@@ -385,9 +397,28 @@
                             )
                           "
                         >
-                          <div class="text-caption text-grey">Episodes</div>
-                          <div class="text-h6">
-                            {{ selectedAnime.animeMetadata.episodes }}
+                          <div class="text-left">
+                            <div class="text-caption text-grey">Episodes</div>
+                            <div class="d-flex align-left justify-start gap-3">
+                              <div class="text-h6">
+                                {{
+                                  getEpisodeDisplay(selectedAnime.animeMetadata)
+                                }}
+                              </div>
+                              <v-chip
+                                v-if="
+                                  getAiringStatus(selectedAnime.animeMetadata)
+                                "
+                                size="x-small"
+                                color="success"
+                                variant="flat"
+                                class="ml-3"
+                              >
+                                {{
+                                  getAiringStatus(selectedAnime.animeMetadata)
+                                }}
+                              </v-chip>
+                            </div>
                           </div>
                         </v-card>
                       </v-col>
@@ -641,7 +672,10 @@
             @click="handleItemClick(item)"
             hover
           >
-            <div class="anime-card-content">
+            <div
+              class="anime-card-content"
+              style="width: 100%; overflow: hidden"
+            >
               <div class="anime-cover-container">
                 <v-img
                   v-if="
@@ -667,6 +701,32 @@
                     )
                   "
                 >
+                  <!-- Status Chips on Cover -->
+                  <template v-slot:default>
+                    <!-- General Status Chip (Left) -->
+                    <v-chip
+                      v-if="item.animeMetadata?.status"
+                      :color="getGeneralStatusChip(item.animeMetadata)?.color"
+                      size="x-small"
+                      variant="flat"
+                      class="ma-1"
+                      style="position: absolute; top: 0; left: 0; z-index: 1"
+                    >
+                      {{ getGeneralStatusChip(item.animeMetadata)?.text }}
+                    </v-chip>
+
+                    <!-- Next Episode Chip (Right) -->
+                    <v-chip
+                      v-if="getAiringStatus(item.animeMetadata)"
+                      color="success"
+                      size="x-small"
+                      variant="flat"
+                      class="ma-1"
+                      style="position: absolute; top: 0; right: 0; z-index: 1"
+                    >
+                      {{ getAiringStatus(item.animeMetadata) }}
+                    </v-chip>
+                  </template>
                   <template v-slot:placeholder>
                     <v-skeleton-loader type="image"></v-skeleton-loader>
                   </template>
@@ -674,74 +734,141 @@
                 <div v-else class="anime-cover-placeholder">
                   <v-icon size="64" color="grey">{{ mdiFolder }}</v-icon>
                 </div>
-
-                <!-- Airing Status Badge -->
-                <v-chip
-                  v-if="item.animeMetadata?.status"
-                  :color="getStatusColor(item.animeMetadata.status)"
-                  size="x-small"
-                  class="status-badge"
-                  variant="flat"
-                >
-                  {{ getStatusLabel(item.animeMetadata.status) }}
-                </v-chip>
               </div>
 
-              <div class="anime-info">
-                <h3 class="anime-title">
-                  {{ item.animeMetadata?.title || item.name }}
-                </h3>
-                <p v-if="item.animeMetadata?.subtitle" class="anime-subtitle">
-                  {{ item.animeMetadata.subtitle }}
-                </p>
+              <!-- Info section with divider -->
+              <v-divider class="my-2" />
 
-                <div v-if="item.animeMetadata?.genres" class="anime-genres">
+              <div
+                class="anime-info pa-3"
+                style="width: 100%; overflow: hidden"
+              >
+                <!-- Title -->
+                <v-tooltip
+                  location="top"
+                  :disabled="
+                    !shouldShowTooltip(item.animeMetadata?.title || item.name)
+                  "
+                >
+                  <template v-slot:activator="{ props }">
+                    <h3
+                      class="anime-title text-truncate"
+                      v-bind="props"
+                      style="text-align: center"
+                    >
+                      {{ item.animeMetadata?.title || item.name }}
+                    </h3>
+                  </template>
+                  <span>{{ item.animeMetadata?.title || item.name }}</span>
+                </v-tooltip>
+                <!-- Subtitle -->
+                <v-tooltip
+                  v-if="item.animeMetadata?.subtitle"
+                  location="top"
+                  :disabled="!shouldShowTooltip(item.animeMetadata.subtitle)"
+                >
+                  <template v-slot:activator="{ props }">
+                    <p
+                      class="anime-subtitle text-truncate"
+                      v-bind="props"
+                      style="
+                        text-align: center;
+                        min-height: 20px;
+                        margin-bottom: 12px;
+                      "
+                    >
+                      {{ item.animeMetadata.subtitle }}
+                    </p>
+                  </template>
+                  <span>{{ item.animeMetadata.subtitle }}</span>
+                </v-tooltip>
+                <div v-else style="min-height: 20px; margin-bottom: 12px"></div>
+
+                <!-- Score and Episodes -->
+                <div class="d-flex align-center justify-space-between mb-3">
+                  <div class="d-flex align-center">
+                    <template v-if="getAnimeScore(item.animeMetadata)">
+                      <v-icon
+                        :icon="
+                          getScoreDisplay(getAnimeScore(item.animeMetadata))
+                            .icon
+                        "
+                        :color="
+                          getScoreDisplay(getAnimeScore(item.animeMetadata))
+                            .color
+                        "
+                        size="small"
+                        class="mr-1"
+                      />
+                      <span
+                        class="text-body-2 font-weight-medium"
+                        :style="{
+                          color: getScoreDisplay(
+                            getAnimeScore(item.animeMetadata),
+                          ).color,
+                        }"
+                        >{{ getAnimeScore(item.animeMetadata) }}%</span
+                      >
+                    </template>
+                    <span v-else class="text-body-2 text-grey">--</span>
+                  </div>
+                  <div>
+                    <span class="text-body-2 text-grey">
+                      {{
+                        item.animeMetadata
+                          ? formatEpisodeCount(item) + " eps"
+                          : "-- eps"
+                      }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Genres - centered and wrapped -->
+                <div class="text-center mb-3" style="min-height: 48px">
+                  <template v-if="item.animeMetadata?.genres?.length">
+                    <v-chip
+                      v-for="(genre, index) in item.animeMetadata.genres.slice(
+                        0,
+                        5,
+                      )"
+                      :key="genre"
+                      size="small"
+                      variant="flat"
+                      class="ma-1"
+                      :style="
+                        getAnimeChipStyle(
+                          item.animeMetadata,
+                          index === 0
+                            ? 'primary'
+                            : index === 1
+                              ? 'secondary'
+                              : 'accent',
+                        )
+                      "
+                    >
+                      {{ genre }}
+                    </v-chip>
+                  </template>
+                  <div v-else class="text-caption text-grey py-2">
+                    No genres available
+                  </div>
+                </div>
+
+                <!-- Versions - centered -->
+                <div class="text-center">
                   <v-chip
-                    v-for="(genre, index) in item.animeMetadata.genres.slice(
-                      0,
-                      3,
-                    )"
-                    :key="genre"
-                    size="x-small"
-                    variant="flat"
-                    :style="
-                      getAnimeChipStyle(
-                        item.animeMetadata,
-                        index === 0
-                          ? 'primary'
-                          : index === 1
-                            ? 'secondary'
-                            : 'accent',
-                      )
-                    "
+                    v-if="item.animeMetadata"
+                    size="small"
+                    variant="outlined"
+                    :style="getAnimeChipStyle(item.animeMetadata, 'primary')"
                   >
-                    {{ genre }}
+                    {{
+                      (item.versionCount ?? 1) === 1
+                        ? "1 Version"
+                        : `${item.versionCount} Versions`
+                    }}
                   </v-chip>
                 </div>
-
-                <div class="anime-stats">
-                  <v-rating
-                    v-if="item.animeMetadata?.averageScore"
-                    :model-value="item.animeMetadata.averageScore / 20"
-                    half-increments
-                    readonly
-                    size="small"
-                    density="compact"
-                  />
-                  <span v-if="item.animeMetadata" class="episodes-count">
-                    {{ formatEpisodeCount(item) }} eps
-                  </span>
-                </div>
-
-                <v-chip
-                  v-if="(item.versionCount ?? 0) > 1"
-                  size="small"
-                  variant="flat"
-                  class="mt-2"
-                  :style="getAnimeChipStyle(item.animeMetadata, 'primary')"
-                >
-                  {{ item.versionCount }} versions
-                </v-chip>
               </div>
             </div>
           </v-card>
@@ -806,16 +933,54 @@
 
             <v-list-item-title>
               <div class="anime-title-container">
-                <div class="anime-title-wrapper">
-                  <span class="anime-title">{{
-                    item.animeMetadata?.title || item.name
-                  }}</span>
-                  <small
-                    v-if="item.animeMetadata?.subtitle"
-                    class="anime-subtitle"
+                <div
+                  class="anime-title-wrapper"
+                  style="min-width: 0; flex: 1; overflow: hidden"
+                >
+                  <v-tooltip
+                    location="top"
+                    :disabled="
+                      !shouldShowTooltip(item.animeMetadata?.title || item.name)
+                    "
                   >
-                    {{ item.animeMetadata.subtitle }}
-                  </small>
+                    <template v-slot:activator="{ props }">
+                      <span
+                        class="anime-title text-truncate"
+                        v-bind="props"
+                        style="
+                          max-width: 100%;
+                          display: block;
+                          overflow: hidden;
+                          text-overflow: ellipsis;
+                          white-space: nowrap;
+                        "
+                        >{{ item.animeMetadata?.title || item.name }}</span
+                      >
+                    </template>
+                    <span>{{ item.animeMetadata?.title || item.name }}</span>
+                  </v-tooltip>
+                  <v-tooltip
+                    v-if="item.animeMetadata?.subtitle"
+                    location="top"
+                    :disabled="!shouldShowTooltip(item.animeMetadata.subtitle)"
+                  >
+                    <template v-slot:activator="{ props }">
+                      <small
+                        class="anime-subtitle text-truncate"
+                        v-bind="props"
+                        style="
+                          max-width: 100%;
+                          display: block;
+                          overflow: hidden;
+                          text-overflow: ellipsis;
+                          white-space: nowrap;
+                        "
+                      >
+                        {{ item.animeMetadata.subtitle }}
+                      </small>
+                    </template>
+                    <span>{{ item.animeMetadata.subtitle }}</span>
+                  </v-tooltip>
                 </div>
 
                 <!-- Version count chips -->
@@ -845,44 +1010,90 @@
             </v-list-item-title>
 
             <v-list-item-subtitle v-if="isAnimeDirectory(item)">
-              <div class="d-flex align-center flex-wrap mb-1">
-                <v-rating
-                  v-if="item.animeMetadata?.averageScore"
-                  :model-value="item.animeMetadata.averageScore / 20"
-                  half-increments
-                  readonly
-                  size="x-small"
-                  density="compact"
-                  class="mr-2"
-                />
-                <span>{{ formatEpisodeCount(item) }} episodes</span>
-                <span v-if="(item.versionCount ?? 0) > 1" class="ml-2">
-                  • {{ item.versionCount }} versions
+              <div class="d-flex align-center flex-wrap gap-3 mb-1">
+                <!-- Rating -->
+                <div class="d-flex align-center">
+                  <template v-if="getAnimeScore(item.animeMetadata)">
+                    <v-icon
+                      :icon="
+                        getScoreDisplay(getAnimeScore(item.animeMetadata)).icon
+                      "
+                      :color="
+                        getScoreDisplay(getAnimeScore(item.animeMetadata)).color
+                      "
+                      size="x-small"
+                      class="mr-1"
+                    />
+                    <span
+                      class="text-caption font-weight-medium"
+                      :style="{
+                        color: getScoreDisplay(
+                          getAnimeScore(item.animeMetadata),
+                        ).color,
+                      }"
+                      >{{ getAnimeScore(item.animeMetadata) }}%</span
+                    >
+                  </template>
+                  <span v-else class="text-caption text-grey">--</span>
+                </div>
+
+                <!-- Episode count -->
+                <div class="d-flex align-center gap-2">
+                  <span class="text-caption text-grey">
+                    {{
+                      item.animeMetadata
+                        ? formatEpisodeCount(item) + " episodes"
+                        : "-- episodes"
+                    }}
+                  </span>
+                  <v-chip
+                    v-if="getAiringStatus(item.animeMetadata)"
+                    size="x-small"
+                    color="success"
+                    variant="flat"
+                  >
+                    {{ getAiringStatus(item.animeMetadata) }}
+                  </v-chip>
+                </div>
+
+                <!-- Version count -->
+                <span
+                  v-if="item.animeMetadata"
+                  class="text-caption text-primary font-weight-medium"
+                >
+                  {{
+                    (item.versionCount ?? 1) === 1
+                      ? "1 version"
+                      : `${item.versionCount} versions`
+                  }}
                 </span>
               </div>
-              <div v-if="item.animeMetadata?.genres" class="mt-1">
-                <v-chip
-                  v-for="(genre, index) in item.animeMetadata.genres.slice(
-                    0,
-                    3,
-                  )"
-                  :key="genre"
-                  size="x-small"
-                  variant="flat"
-                  class="mr-1"
-                  :style="
-                    getAnimeChipStyle(
-                      item.animeMetadata,
-                      index === 0
-                        ? 'primary'
-                        : index === 1
-                          ? 'secondary'
-                          : 'accent',
-                    )
-                  "
-                >
-                  {{ genre }}
-                </v-chip>
+              <div class="mt-1">
+                <template v-if="item.animeMetadata?.genres?.length">
+                  <v-chip
+                    v-for="(genre, index) in item.animeMetadata.genres.slice(
+                      0,
+                      3,
+                    )"
+                    :key="genre"
+                    size="x-small"
+                    variant="flat"
+                    class="mr-1"
+                    :style="
+                      getAnimeChipStyle(
+                        item.animeMetadata,
+                        index === 0
+                          ? 'primary'
+                          : index === 1
+                            ? 'secondary'
+                            : 'accent',
+                      )
+                    "
+                  >
+                    {{ genre }}
+                  </v-chip>
+                </template>
+                <span v-else class="text-caption text-grey">--</span>
               </div>
 
               <!-- Description with loading states -->
@@ -967,6 +1178,9 @@ import {
   mdiSortAlphabeticalDescending,
   mdiSortNumericAscending,
   mdiSortNumericDescending,
+  mdiEmoticonHappy,
+  mdiEmoticonNeutral,
+  mdiEmoticonSad,
 } from "@mdi/js";
 
 interface AnimeMetadata {
@@ -980,10 +1194,17 @@ interface AnimeMetadata {
   coverImageColor?: string;
   genres?: string[];
   averageScore?: number;
+  meanScore?: number;
   description?: string;
   episodes?: number;
   totalEpisodes?: number; // AniList total episodes
   scannedEpisodes?: number; // Actually found episodes
+  currentEpisode?: number; // Current episode number for airing anime
+  nextAiringEpisode?: {
+    episode: number;
+    airingAt: number;
+    timeUntilAiring: number;
+  };
   status?: string;
   season?: string;
   seasonYear?: number;
@@ -1107,6 +1328,130 @@ const processedItems = ref<AnimeItem[]>([]);
 // Color extraction cache for anime without API colors
 const extractedColors = ref<Map<string, string>>(new Map());
 const colorExtractionQueue = ref<Set<string>>(new Set());
+
+// Auto-set sort order to "desc" when sorting by score
+watch(sortBy, (newSortBy) => {
+  if (newSortBy === "score") {
+    sortOrder.value = "desc"; // High to Low for scores
+  }
+});
+
+// Helper function to determine if tooltip should be shown for long text
+function shouldShowTooltip(text: string | null | undefined): boolean {
+  return text ? text.length > 50 : false; // Show tooltip if text is longer than 50 characters
+}
+
+// Helper function to get score with fallback to meanScore
+function getAnimeScore(metadata: any): number | undefined {
+  return metadata?.averageScore || metadata?.meanScore;
+}
+
+// Helper function to get enhanced episode display
+function getEpisodeDisplay(metadata: any): string {
+  if (!metadata) return "--";
+
+  const totalEpisodes = metadata.episodes || metadata.totalEpisodes;
+  const currentEpisode = metadata.currentEpisode;
+  const status = metadata.status;
+  const scannedEpisodes = metadata.scannedEpisodes;
+
+  // For currently airing anime with current episode info
+  if (status === "RELEASING" && currentEpisode) {
+    if (totalEpisodes) {
+      return `${currentEpisode}/${totalEpisodes}`;
+    } else {
+      // Show current/? if total is unknown
+      return `${currentEpisode}/?`;
+    }
+  }
+
+  // For anime with scanned episodes but no AniList data
+  if (scannedEpisodes && !totalEpisodes) {
+    return `${scannedEpisodes}/?`;
+  }
+
+  // For anime with both scanned and total episodes (show both if different)
+  if (scannedEpisodes && totalEpisodes && scannedEpisodes !== totalEpisodes) {
+    return `${scannedEpisodes}/${totalEpisodes}`;
+  }
+
+  // For finished anime or when we have total episodes
+  if (totalEpisodes) {
+    return totalEpisodes.toString();
+  }
+
+  // If we only have scanned episodes
+  if (scannedEpisodes) {
+    return scannedEpisodes.toString();
+  }
+
+  return "--";
+}
+
+// Helper function to get airing status display
+function getAiringStatus(metadata: any): string | null {
+  if (!metadata?.nextAiringEpisode || metadata.status !== "RELEASING") {
+    return null;
+  }
+
+  const timeUntil = metadata.nextAiringEpisode.timeUntilAiring;
+  const nextEpisode = metadata.nextAiringEpisode.episode;
+
+  if (timeUntil <= 0) {
+    return `Ep. ${nextEpisode} airing now`;
+  }
+
+  const days = Math.floor(timeUntil / (24 * 60 * 60));
+  const hours = Math.floor((timeUntil % (24 * 60 * 60)) / (60 * 60));
+
+  if (days > 0) {
+    return `Ep. ${nextEpisode} in ${days}d`;
+  } else if (hours > 0) {
+    return `Ep. ${nextEpisode} in ${hours}h`;
+  } else {
+    const minutes = Math.floor((timeUntil % (60 * 60)) / 60);
+    return `Ep. ${nextEpisode} in ${minutes}m`;
+  }
+}
+
+// Helper function to get general status chip info (without next episode details)
+function getGeneralStatusChip(
+  metadata: any,
+): { text: string; color: string } | null {
+  if (!metadata) return null;
+
+  const status = metadata.status;
+
+  switch (status) {
+    case "RELEASING":
+      return {
+        text: "Airing",
+        color: "success",
+      };
+    case "FINISHED":
+      return {
+        text: "Finished",
+        color: "primary",
+      };
+    case "NOT_YET_RELEASED":
+      return {
+        text: "Upcoming",
+        color: "warning",
+      };
+    case "CANCELLED":
+      return {
+        text: "Cancelled",
+        color: "error",
+      };
+    case "HIATUS":
+      return {
+        text: "Hiatus",
+        color: "orange",
+      };
+    default:
+      return null;
+  }
+}
 
 // Title parsing functions (similar to version parser)
 function parseDirectoryTitle(directoryName: string): {
@@ -1743,8 +2088,8 @@ const filteredItems = computed(() => {
     let result = 0;
 
     if (sortBy.value === "score") {
-      const scoreA = a.animeMetadata?.averageScore || 0;
-      const scoreB = b.animeMetadata?.averageScore || 0;
+      const scoreA = getAnimeScore(a.animeMetadata) || 0;
+      const scoreB = getAnimeScore(b.animeMetadata) || 0;
       result = scoreA - scoreB;
     } else if (sortBy.value === "episodes") {
       const episodesA = a.animeMetadata?.episodes || 0;
@@ -1944,54 +2289,36 @@ function isAnimeDirectory(item: AnimeItem): boolean {
   return item.isDir && (item.isGrouped || item.animeMetadata !== undefined);
 }
 
-function getStatusColor(status: string): string {
-  switch (status?.toLowerCase()) {
-    case "releasing":
-    case "currently airing":
-      return "green";
-    case "finished":
-    case "completed":
-      return "blue";
-    case "not_yet_released":
-    case "not yet released":
-      return "orange";
-    case "cancelled":
-      return "red";
-    case "hiatus":
-      return "amber";
-    default:
-      return "grey";
-  }
-}
-
-function getStatusLabel(status: string): string {
-  switch (status?.toLowerCase()) {
-    case "releasing":
-    case "currently airing":
-      return "AIRING";
-    case "finished":
-    case "completed":
-      return "FINISHED";
-    case "not_yet_released":
-    case "not yet released":
-      return "UPCOMING";
-    case "cancelled":
-      return "CANCELLED";
-    case "hiatus":
-      return "HIATUS";
-    default:
-      return status?.toUpperCase() || "UNKNOWN";
-  }
-}
-
 // Get rating-based color class (AniChart style: 100-75% Green, 61-74% Orange, 0-60% Red)
 function getRatingColorClass(item: AnimeItem): string {
-  const score = item.animeMetadata?.averageScore;
+  const score = getAnimeScore(item.animeMetadata);
   if (!score) return "rating-unknown";
 
   if (score >= 75) return "rating-high"; // 75-100: High (Green)
   if (score >= 61) return "rating-medium"; // 61-74: Medium (Orange)
   return "rating-low"; // 0-60: Low (Red)
+}
+
+// Get smiley icon and color for score
+function getScoreDisplay(score?: number) {
+  if (!score)
+    return {
+      icon: mdiEmoticonNeutral,
+      color: "#9E9E9E",
+      class: "rating-unknown",
+    };
+
+  if (score >= 75) {
+    return { icon: mdiEmoticonHappy, color: "#4CAF50", class: "rating-high" }; // Green happy
+  } else if (score >= 60) {
+    return {
+      icon: mdiEmoticonNeutral,
+      color: "#FF9800",
+      class: "rating-medium",
+    }; // Orange neutral
+  } else {
+    return { icon: mdiEmoticonSad, color: "#F44336", class: "rating-low" }; // Red sad
+  }
 }
 
 // Extract dominant color from cover image using Canvas API
@@ -2629,31 +2956,8 @@ function formatEpisodeCount(item: AnimeItem): string {
   const metadata = item.animeMetadata;
   if (!metadata) return "Unknown";
 
-  const scanned = metadata.scannedEpisodes;
-  const total = metadata.totalEpisodes;
-  const episodes = metadata.episodes;
-
-  // If we have scanned episodes and they differ from AniList total
-  if (scanned !== null && scanned !== undefined && total && scanned !== total) {
-    return `${scanned}/${total}`;
-  }
-
-  // If we have scanned episodes but no AniList total
-  if (scanned !== null && scanned !== undefined && !total) {
-    return `${scanned}/?`;
-  }
-
-  // If we have episodes count (either scanned or AniList)
-  if (episodes) {
-    return `${episodes}`;
-  }
-
-  // If we have AniList total but no scanned episodes
-  if (total) {
-    return `${total}`;
-  }
-
-  return "Unknown";
+  // Use the enhanced episode display function
+  return getEpisodeDisplay(metadata);
 }
 
 // Handle metadata updates from plugin
